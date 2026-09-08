@@ -1,0 +1,19 @@
+{
+  "name": "enterprise-admin-docs-system",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Enterprise administrative document management system",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:desktop": "pnpm --filter desktop dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "desktop": "pnpm --filter desktop dev",
+    "prisma:validate": "pnpm --filter backend prisma:validate"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

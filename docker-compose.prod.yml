@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: admin-docs-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.runtime
+    container_name: admin-docs-prod-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      BACKEND_PORT: 3000
+      STORAGE_ROOT: /app/storage
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_REAL_NAME: ${ADMIN_REAL_NAME:-System Administrator}
+      SEED_ADMIN_OVERWRITE: ${SEED_ADMIN_OVERWRITE:-false}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-}
+      CONTENT_INDEX_MAX_CHARS: ${CONTENT_INDEX_MAX_CHARS:-500000}
+      AI_SEARCH_ENABLED: ${AI_SEARCH_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      FINANCE_AI_ENABLED: ${FINANCE_AI_ENABLED:-false}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      FINANCE_AI_TIMEOUT_MS: ${FINANCE_AI_TIMEOUT_MS:-60000}
+      FINANCE_AI_MAX_OUTPUT_TOKENS: ${FINANCE_AI_MAX_OUTPUT_TOKENS:-1800}
+      FINANCE_AI_MAX_DOCUMENTS: ${FINANCE_AI_MAX_DOCUMENTS:-500}
+      FINANCE_AI_MAX_INPUT_CHARS: ${FINANCE_AI_MAX_INPUT_CHARS:-12000}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_MAX_INPUT_CHARS: ${EMBEDDING_MAX_INPUT_CHARS:-8000}
+    volumes:
+      - ./data/storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "pnpm prisma migrate deploy &&
+      pnpm seed:base-data &&
+      pnpm seed:admin &&
+      node dist/main.js"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.runtime
+    container_name: admin-docs-prod-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s

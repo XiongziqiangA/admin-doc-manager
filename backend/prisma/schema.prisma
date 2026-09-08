@@ -1,0 +1,491 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PartnerType {
+  CUSTOMER
+  SUPPLIER
+  PARTNER
+  OTHER
+}
+
+enum PartnerStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum DocumentStatus {
+  NORMAL
+  ARCHIVED
+  DELETED
+}
+
+enum DocumentLogAction {
+  UPLOAD
+  VIEW_DETAIL
+  DOWNLOAD
+  EDIT_INFO
+  UPLOAD_VERSION
+  DELETE
+  RESTORE
+}
+
+enum DocumentLogResult {
+  SUCCESS
+  FAILURE
+}
+
+enum FinancePackageStatus {
+  DRAFT
+  READY
+  EXPORTED
+}
+
+enum FinanceAnalysisJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum FinanceSuggestionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum FinanceAnalysisSource {
+  RULES
+  AI
+}
+
+enum FinanceMaterialType {
+  REIMBURSEMENT_FORM
+  INVOICE
+  PAYMENT_FORM
+  TICKET
+  CONTRACT
+  BANK_RECEIPT
+  OTHER
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  username              String                 @unique
+  passwordHash          String                 @map("password_hash")
+  realName              String                 @map("real_name")
+  role                  UserRole               @default(EMPLOYEE)
+  status                UserStatus             @default(ACTIVE)
+  departmentId          String?                @map("department_id")
+  phone                 String?
+  email                 String?
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  deletedAt             DateTime?              @map("deleted_at")
+  department            Department?            @relation(fields: [departmentId], references: [id])
+  createdTags           Tag[]                  @relation("TagCreatedBy")
+  createdDocuments      Document[]             @relation("DocumentCreatedBy")
+  uploadedVersions      DocumentVersion[]      @relation("VersionUploadedBy")
+  documentLogs          DocumentLog[]
+  financePackageTasks   FinancePackageTask[]   @relation("FinancePackageCreatedBy")
+  financePackageExports FinancePackageExport[] @relation("FinancePackageExportedBy")
+  financeAnalysisJobs   FinanceAnalysisJob[]   @relation("FinanceAnalysisCreatedBy")
+
+  @@map("users")
+}
+
+model Department {
+  id          String       @id @default(uuid())
+  name        String
+  parentId    String?      @map("parent_id")
+  managerNote String?      @map("manager_note")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  deletedAt   DateTime?    @map("deleted_at")
+  parent      Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children    Department[] @relation("DepartmentTree")
+  users       User[]
+  documents   Document[]
+
+  @@index([parentId])
+  @@map("departments")
+}
+
+model Category {
+  id                   String     @id @default(uuid())
+  name                 String
+  code                 String?
+  parentId             String?    @map("parent_id")
+  level                Int
+  isSystem             Boolean    @default(false) @map("is_system")
+  sort                 Int        @default(0)
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+  deletedAt            DateTime?  @map("deleted_at")
+  parent               Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children             Category[] @relation("CategoryTree")
+  primaryDocuments     Document[] @relation("PrimaryCategory")
+  subcategoryDocuments Document[] @relation("Subcategory")
+
+  @@unique([code])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Tag {
+  id           String        @id @default(uuid())
+  name         String
+  normalized   String        @unique
+  createdById  String?       @map("created_by_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  deletedAt    DateTime?     @map("deleted_at")
+  createdBy    User?         @relation("TagCreatedBy", fields: [createdById], references: [id])
+  documentTags DocumentTag[]
+
+  @@map("tags")
+}
+
+model Partner {
+  id               String            @id @default(uuid())
+  companyName      String            @unique @map("company_name")
+  type             PartnerType
+  contactName      String?           @map("contact_name")
+  phone            String?
+  email            String?
+  address          String?
+  remark           String?
+  status           PartnerStatus     @default(ACTIVE)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  deletedAt        DateTime?         @map("deleted_at")
+  documentPartners DocumentPartner[]
+
+  @@index([type])
+  @@index([status])
+  @@map("partners")
+}
+
+model Document {
+  id                  String                 @id @default(uuid())
+  title               String
+  documentNo          String                 @unique @map("document_no")
+  categoryId          String                 @map("category_id")
+  subcategoryId       String?                @map("subcategory_id")
+  departmentId        String?                @map("department_id")
+  status              DocumentStatus         @default(NORMAL)
+  creatorId           String                 @map("creator_id")
+  remark              String?
+  currentVersionId    String?                @unique @map("current_version_id")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  deletedAt           DateTime?              @map("deleted_at")
+  category            Category               @relation("PrimaryCategory", fields: [categoryId], references: [id])
+  subcategory         Category?              @relation("Subcategory", fields: [subcategoryId], references: [id])
+  department          Department?            @relation(fields: [departmentId], references: [id])
+  creator             User                   @relation("DocumentCreatedBy", fields: [creatorId], references: [id])
+  currentVersion      DocumentVersion?       @relation("CurrentDocumentVersion", fields: [currentVersionId], references: [id])
+  versions            DocumentVersion[]      @relation("DocumentVersions")
+  documentTags        DocumentTag[]
+  documentPartners    DocumentPartner[]
+  contentIndexes      DocumentContentIndex[]
+  analyses            DocumentAnalysis[]
+  logs                DocumentLog[]
+  financePackageItems FinancePackageItem[]
+  financePackageSuggestions FinancePackageSuggestion[]
+
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([departmentId])
+  @@index([creatorId])
+  @@index([status])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id                  String                @id @default(uuid())
+  documentId          String                @map("document_id")
+  versionNo           String                @map("version_no")
+  versionLabel        String                @map("version_label")
+  originalFileName    String                @map("original_file_name")
+  storageKey          String                @map("storage_key")
+  fileSize            Int                   @map("file_size")
+  mimeType            String                @map("mime_type")
+  fileExt             String                @map("file_ext")
+  checksum            String
+  uploadUserId        String                @map("upload_user_id")
+  changeNote          String?               @map("change_note")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  document            Document              @relation("DocumentVersions", fields: [documentId], references: [id])
+  currentFor          Document?             @relation("CurrentDocumentVersion")
+  uploadUser          User                  @relation("VersionUploadedBy", fields: [uploadUserId], references: [id])
+  contentIndex        DocumentContentIndex?
+  analysis            DocumentAnalysis?
+  logs                DocumentLog[]
+  financePackageItems FinancePackageItem[]
+  financePackageSuggestions FinancePackageSuggestion[]
+
+  @@unique([documentId, versionNo])
+  @@index([documentId])
+  @@index([uploadUserId])
+  @@map("document_versions")
+}
+
+model DocumentContentIndex {
+  id             String    @id @default(uuid())
+  documentId     String    @map("document_id")
+  versionId      String    @unique @map("version_id")
+  extractedText  String    @map("extracted_text") @db.Text
+  textLength     Int       @map("text_length")
+  parser         String
+  status         String
+  embedding      Json?
+  embeddingModel String?   @map("embedding_model")
+  errorMessage   String?   @map("error_message") @db.Text
+  indexedAt      DateTime? @map("indexed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version  DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([status])
+  @@map("document_content_indexes")
+}
+
+model DocumentTag {
+  documentId String   @map("document_id")
+  tagId      String   @map("tag_id")
+  document   Document @relation(fields: [documentId], references: [id])
+  tag        Tag      @relation(fields: [tagId], references: [id])
+
+  @@id([documentId, tagId])
+  @@map("document_tags")
+}
+
+model DocumentPartner {
+  documentId String   @map("document_id")
+  partnerId  String   @map("partner_id")
+  document   Document @relation(fields: [documentId], references: [id])
+  partner    Partner  @relation(fields: [partnerId], references: [id])
+
+  @@id([documentId, partnerId])
+  @@map("document_partners")
+}
+
+model DocumentLog {
+  id         String            @id @default(uuid())
+  documentId String            @map("document_id")
+  versionId  String?           @map("version_id")
+  userId     String            @map("user_id")
+  action     DocumentLogAction
+  ip         String?
+  userAgent  String?           @map("user_agent")
+  result     DocumentLogResult @default(SUCCESS)
+  createdAt  DateTime          @default(now()) @map("created_at")
+  document   Document          @relation(fields: [documentId], references: [id])
+  version    DocumentVersion?  @relation(fields: [versionId], references: [id])
+  user       User              @relation(fields: [userId], references: [id])
+
+  @@index([documentId])
+  @@index([versionId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("document_logs")
+}
+
+model FinancePackageTask {
+  id              String                 @id @default(uuid())
+  name            String
+  period          String
+  rootFolderName  String                 @map("root_folder_name")
+  status          FinancePackageStatus   @default(DRAFT)
+  includeManifest Boolean                @default(true) @map("include_manifest")
+  createdById     String                 @map("created_by_id")
+  lastExportedAt  DateTime?              @map("last_exported_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+  createdBy       User                   @relation("FinancePackageCreatedBy", fields: [createdById], references: [id])
+  groups          FinancePackageGroup[]
+  items           FinancePackageItem[]
+  exports         FinancePackageExport[]
+  analysisJobs    FinanceAnalysisJob[]
+
+  @@index([period])
+  @@index([status])
+  @@index([createdById])
+  @@map("finance_package_tasks")
+}
+
+model FinancePackageGroup {
+  id        String                @id @default(uuid())
+  taskId    String                @map("task_id")
+  name      String
+  parentId  String?               @map("parent_id")
+  sort      Int                   @default(0)
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+  task      FinancePackageTask    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  parent    FinancePackageGroup?  @relation("FinancePackageGroupTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  FinancePackageGroup[] @relation("FinancePackageGroupTree")
+  items     FinancePackageItem[]
+
+  @@index([taskId, sort])
+  @@index([parentId])
+  @@map("finance_package_groups")
+}
+
+model FinancePackageItem {
+  id             String               @id @default(uuid())
+  taskId         String               @map("task_id")
+  groupId        String?              @map("group_id")
+  documentId     String               @map("document_id")
+  versionId      String               @map("version_id")
+  materialType   FinanceMaterialType  @default(OTHER) @map("material_type")
+  exportFileName String?              @map("export_file_name")
+  sort           Int                  @default(0)
+  remark         String?
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  task           FinancePackageTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  group          FinancePackageGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  document       Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version        DocumentVersion      @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, documentId])
+  @@index([taskId, groupId, sort])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("finance_package_items")
+}
+
+model FinancePackageExport {
+  id           String             @id @default(uuid())
+  taskId       String             @map("task_id")
+  exportedById String             @map("exported_by_id")
+  fileName     String             @map("file_name")
+  fileCount    Int                @map("file_count")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  task         FinancePackageTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  exportedBy   User               @relation("FinancePackageExportedBy", fields: [exportedById], references: [id])
+
+  @@index([taskId, createdAt])
+  @@index([exportedById])
+  @@map("finance_package_exports")
+}
+
+model DocumentAnalysis {
+  id              String                @id @default(uuid())
+  documentId      String                @map("document_id")
+  versionId       String                @unique @map("version_id")
+  source          FinanceAnalysisSource
+  status          String
+  extractedFields Json                  @map("extracted_fields")
+  confidence      Float?
+  provider        String?
+  model           String?
+  promptVersion   String?               @map("prompt_version")
+  errorMessage    String?               @map("error_message") @db.Text
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  document        Document              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version         DocumentVersion       @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([status])
+  @@map("document_analyses")
+}
+
+model FinanceAnalysisJob {
+  id              String                   @id @default(uuid())
+  taskId          String                   @map("task_id")
+  createdById     String                   @map("created_by_id")
+  status          FinanceAnalysisJobStatus @default(PENDING)
+  totalCount      Int                      @default(0) @map("total_count")
+  processedCount  Int                      @default(0) @map("processed_count")
+  requestCount    Int                      @default(0) @map("request_count")
+  inputTokens     Int?                     @map("input_tokens")
+  outputTokens    Int?                    @map("output_tokens")
+  totalTokens     Int?                    @map("total_tokens")
+  durationMs      Int?                    @map("duration_ms")
+  provider        String?
+  model           String?
+  promptVersion   String?                  @map("prompt_version")
+  errorMessage    String?                  @map("error_message") @db.Text
+  startedAt       DateTime?                @map("started_at")
+  completedAt     DateTime?                @map("completed_at")
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+  task            FinancePackageTask       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdBy       User                     @relation("FinanceAnalysisCreatedBy", fields: [createdById], references: [id])
+  suggestions     FinancePackageSuggestion[]
+
+  @@index([taskId, createdAt])
+  @@index([status])
+  @@index([createdById])
+  @@map("finance_analysis_jobs")
+}
+
+model AiProviderSetting {
+  id               String   @id @default("default")
+  enabled          Boolean  @default(false)
+  baseUrl          String   @map("base_url")
+  model            String
+  apiKeyEncrypted  String?  @map("api_key_encrypted") @db.Text
+  lastTestAt       DateTime? @map("last_test_at")
+  lastTestOk       Boolean?  @map("last_test_ok")
+  lastTestMessage  String?   @map("last_test_message") @db.Text
+  lastTestStatus   String?   @map("last_test_status")
+  lastTestModel    String?   @map("last_test_model")
+  lastTestDuration Int?      @map("last_test_duration_ms")
+  lastTestEndpoint String?   @map("last_test_endpoint")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_provider_settings")
+}
+
+model FinancePackageSuggestion {
+  id                  String                  @id @default(uuid())
+  jobId               String                  @map("job_id")
+  documentId          String                  @map("document_id")
+  versionId           String                  @map("version_id")
+  suggestedGroupName  String                  @map("suggested_group_name")
+  suggestedFileName   String                  @map("suggested_file_name")
+  materialType        FinanceMaterialType     @default(OTHER) @map("material_type")
+  extractedFields     Json                    @map("extracted_fields")
+  groupingKey         String?                 @map("grouping_key")
+  confidence          Float?
+  reasons             Json
+  status              FinanceSuggestionStatus @default(PENDING)
+  confirmedGroupId    String?                 @map("confirmed_group_id")
+  confirmedAt         DateTime?               @map("confirmed_at")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+  job                 FinanceAnalysisJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  document            Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version             DocumentVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, documentId])
+  @@index([jobId, status])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("finance_package_suggestions")
+}

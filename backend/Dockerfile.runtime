@@ -1,0 +1,5 @@
+FROM admin-docs-prod-backend:latest
+COPY backend/prisma /app/backend/prisma
+WORKDIR /app/backend
+RUN pnpm prisma generate
+COPY backend/dist /app/backend/dist

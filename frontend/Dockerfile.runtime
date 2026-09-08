@@ -1,0 +1,2 @@
+FROM admin-docs-prod-frontend:latest
+COPY frontend/dist /usr/share/nginx/html

@@ -1,0 +1,52 @@
+{
+  "name": "desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron desktop shell for the enterprise administrative document management system",
+  "author": "Enterprise Admin Docs",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "pnpm build && electron .",
+    "dist": "pnpm dist:portable",
+    "dist:installer": "pnpm build && electron-builder --win nsis",
+    "dist:portable": "pnpm build && electron-builder --win portable",
+    "pack": "pnpm build && electron-builder --dir",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "electron": "^38.4.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.2"
+  },
+  "build": {
+    "appId": "com.enterprise.admin-docs",
+    "productName": "企业行政资料管理系统",
+    "files": [
+      "assets/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "${productName} 便携版 ${version}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName} 安装程序 ${version}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "企业行政资料管理系统"
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS backend for the enterprise administrative document management system",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "seed:admin": "node prisma/seed-admin.mjs",
+    "seed:base-data": "node prisma/seed-base-data.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.7",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.7",
+    "@nestjs/jwt": "^11.0.1",
+    "@nestjs/platform-express": "^11.1.7",
+    "@nestjs/swagger": "^11.2.1",
+    "@prisma/client": "^6.14.0",
+    "@types/unzipper": "0.10.11",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "helmet": "^8.1.0",
+    "mammoth": "1.12.1",
+    "pdf-parse": "2.4.5",
+    "prisma": "^6.14.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "swagger-ui-express": "^5.0.1",
+    "unzipper": "0.12.5",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.10",
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.2.1",
+    "@types/swagger-ui-express": "^4.1.8",
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.15"
+  }
+}
