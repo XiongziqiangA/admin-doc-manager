@@ -427,7 +427,14 @@ export function BusinessMattersPage({
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
             编辑
           </Button>
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => removeMatter(record)} />
+          <Button
+            size="small"
+            danger
+            title="删除事项"
+            aria-label="删除事项"
+            icon={<DeleteOutlined />}
+            onClick={() => removeMatter(record)}
+          />
         </Space>
       ),
     },

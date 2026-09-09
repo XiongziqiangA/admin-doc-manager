@@ -1,10 +1,10 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { BusinessMatterStatus, BusinessMatterType } from "@prisma/client";
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from "class-validator";
 
 export class UpdateBusinessMatterDto {
   @ApiPropertyOptional()
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
   @MaxLength(200)
   title?: string;
@@ -25,9 +25,9 @@ export class UpdateBusinessMatterDto {
   parentId?: string | null;
 
   @ApiPropertyOptional()
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
-  ownerId?: string;
+  ownerId?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()

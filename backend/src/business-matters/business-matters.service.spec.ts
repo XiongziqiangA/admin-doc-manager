@@ -82,6 +82,33 @@ describe("BusinessMattersService", () => {
     );
   });
 
+  it("rejects blank titles and reversed date ranges", async () => {
+    await expect(
+      service.create(
+        {
+          title: "有效事项",
+          type: BusinessMatterType.PROJECT,
+          startDate: "2026-09-10T00:00:00.000Z",
+          endDate: "2026-09-09T00:00:00.000Z",
+        },
+        user,
+      ),
+    ).rejects.toThrow("开始日期不能晚于结束日期");
+
+    await expect(
+      service.create({ title: "   ", type: BusinessMatterType.PROJECT }, user),
+    ).rejects.toThrow("事项名称不能为空");
+  });
+
+  it("rejects a null owner during update instead of sending an invalid relation", async () => {
+    prisma.businessMatter.findFirst.mockResolvedValue({ id: "matter-1", createdById: user.id, ownerId: user.id });
+
+    await expect(
+      service.update("matter-1", { ownerId: null }, user),
+    ).rejects.toThrow("负责人不能为空");
+    expect(prisma.businessMatter.update).not.toHaveBeenCalled();
+  });
+
   it("lists matters with keyword and document filters and pagination", async () => {
     prisma.businessMatter.findMany.mockResolvedValue([]);
     prisma.businessMatter.count.mockResolvedValue(0);

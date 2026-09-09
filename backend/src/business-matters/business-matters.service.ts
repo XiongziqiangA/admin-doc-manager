@@ -23,6 +23,7 @@ export class BusinessMattersService {
 
   async create(dto: CreateBusinessMatterDto, user: PublicUser) {
     const ownerId = dto.ownerId ?? user.id;
+    this.validateDateRange(dto.startDate, dto.endDate);
     await this.ensureReferences({
       ownerId: dto.ownerId,
       departmentId: dto.departmentId,
@@ -35,7 +36,7 @@ export class BusinessMattersService {
     return this.prisma.businessMatter.create({
       data: {
         matterNo: this.generateMatterNo(),
-        title: dto.title.trim(),
+        title: this.normalizeTitle(dto.title),
         type: dto.type,
         status: dto.status ?? BusinessMatterStatus.PLANNING,
         parentId: dto.parentId ?? null,
@@ -106,9 +107,16 @@ export class BusinessMattersService {
 
   async update(id: string, dto: UpdateBusinessMatterDto, user: PublicUser) {
     const matter = await this.requireEditable(id, user);
+    if (dto.ownerId === null) {
+      throw new BadRequestException("负责人不能为空");
+    }
     if (dto.parentId !== undefined && dto.parentId !== null) {
       await this.ensureParentChain(id, dto.parentId);
     }
+    this.validateDateRange(
+      dto.startDate === undefined ? matter.startDate : dto.startDate,
+      dto.endDate === undefined ? matter.endDate : dto.endDate,
+    );
     await this.ensureReferences({
       ownerId: dto.ownerId,
       departmentId: dto.departmentId === null ? undefined : dto.departmentId,
@@ -116,7 +124,7 @@ export class BusinessMattersService {
     });
 
     const data: Prisma.BusinessMatterUpdateInput = {
-      title: dto.title === undefined ? undefined : dto.title.trim(),
+      title: dto.title === undefined ? undefined : this.normalizeTitle(dto.title),
       type: dto.type,
       status: dto.status,
       parent: dto.parentId === undefined ? undefined : dto.parentId === null ? { disconnect: true } : { connect: { id: dto.parentId } },
@@ -225,6 +233,28 @@ export class BusinessMattersService {
       if (!partner) {
         throw new BadRequestException("合作单位不存在或已停用");
       }
+    }
+  }
+
+  private normalizeTitle(title: string) {
+    const normalized = title.trim();
+    if (!normalized) {
+      throw new BadRequestException("事项名称不能为空");
+    }
+    return normalized;
+  }
+
+  private validateDateRange(startDate?: Date | string | null, endDate?: Date | string | null) {
+    if (!startDate || !endDate) {
+      return;
+    }
+    const start = startDate instanceof Date ? startDate : new Date(startDate);
+    const end = endDate instanceof Date ? endDate : new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException("事项日期格式无效");
+    }
+    if (start.getTime() > end.getTime()) {
+      throw new BadRequestException("开始日期不能晚于结束日期");
     }
   }
 
