@@ -100,6 +100,7 @@ import type {
 } from "./types";
 import { FinancePackagesPage } from "./finance-packages-page";
 import { AiSettingsPage } from "./ai-settings-page";
+import { BusinessMattersPage } from "./business-matters-page";
 
 declare global {
   interface Window {
@@ -550,7 +551,7 @@ const text = {
   items: "\u4e2a",
 };
 
-type PageKey = "dashboard" | "documents" | "recycle" | "categories" | "finance" | "ai-settings";
+type PageKey = "dashboard" | "documents" | "recycle" | "categories" | "finance" | "ai-settings" | "business-matters";
 const WEB_REMEMBERED_USERNAME_KEY = "enterprise-admin-docs.remembered-username";
 
 interface LoginFormValues {
@@ -1942,6 +1943,7 @@ export default function App() {
           items={[
             { key: "dashboard", icon: <AppstoreOutlined />, label: text.dashboard },
             { key: "documents", icon: <FileTextOutlined />, label: text.documents },
+            { key: "business-matters", icon: <FolderOpenOutlined />, label: "项目与事项" },
             ...(user.role === "ADMIN"
               ? [{ key: "recycle", icon: <DeleteOutlined />, label: text.recycleBin }]
               : []),
@@ -2042,6 +2044,13 @@ export default function App() {
               onQueryChange={setDocumentQuery}
               onRestore={handleRestore}
               onPermanentDelete={handlePermanentDelete}
+            />
+          ) : page === "business-matters" ? (
+            <BusinessMattersPage
+              currentUser={user}
+              departments={departments}
+              partners={partners}
+              onOpenDocument={openDocumentDetail}
             />
           ) : page === "finance" ? (
             <FinancePackagesPage
