@@ -126,7 +126,7 @@ GET    /api/business-matters/:matterId/activities
 ### Docker 验证
 
 - `admin-docs-prod-postgres`：healthy。
-- `admin-docs-prod-backend`：healthy，映射 `localhost:51120`。
+- `admin-docs-prod-backend`：healthy，稳定 API 入口为 `http://localhost:8080/api`（经前端反向代理访问，不依赖容器重建后可能变化的内部端口）。
 - `admin-docs-prod-frontend`：healthy，访问地址 `http://localhost:8080`。
 - 未删除或重建 `data/postgres`、`data/storage`，已有业务数据和文件保持不变。
 
