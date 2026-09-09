@@ -5,6 +5,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { BusinessMattersModule } from "./business-matters/business-matters.module";
+import { BusinessWorkflowModule } from "./business-workflow/business-workflow.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { DepartmentsModule } from "./departments/departments.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -23,6 +24,7 @@ import { UsersModule } from "./users/users.module";
     PrismaModule,
     AuthModule,
     BusinessMattersModule,
+    BusinessWorkflowModule,
     UsersModule,
     DepartmentsModule,
     CategoriesModule,

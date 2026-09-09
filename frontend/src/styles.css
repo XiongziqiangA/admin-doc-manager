@@ -94,7 +94,13 @@ body {
 }
 
 .app-content {
+  min-width: 0;
   padding: 24px;
+}
+
+.app-shell,
+.app-shell > .ant-layout {
+  min-width: 0;
 }
 
 .page-stack {
@@ -214,6 +220,94 @@ body {
   text-align: left;
   white-space: normal;
   word-break: break-word;
+}
+
+.business-workflow-overview {
+  min-width: 0;
+}
+
+.business-workflow-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.business-workflow-stat-grid .ant-statistic {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.business-workflow-stat-grid .ant-statistic-content {
+  overflow-wrap: anywhere;
+}
+
+.business-workflow-reminders {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.business-workflow-reminder-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.business-workflow-panel {
+  min-width: 0;
+  padding-top: 4px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.business-workflow-tab-section {
+  min-width: 0;
+}
+
+.business-workflow-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.business-workflow-form-grid .ant-form-item {
+  min-width: 0;
+}
+
+.business-finance-list-item .ant-list-item-meta,
+.business-finance-content {
+  min-width: 0;
+}
+
+.business-finance-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.business-voucher-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
+  background: #eff6ff;
+}
+
+.business-voucher-chip .ant-btn-link {
+  max-width: min(360px, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link-button {
@@ -989,6 +1083,20 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .business-workflow-stat-grid,
+  .business-workflow-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .business-workflow-reminder-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .business-workflow-reminder-row > .ant-typography {
+    padding-left: 0;
+  }
+
   .finance-task-heading,
   .finance-file-row {
     align-items: stretch;
@@ -1017,6 +1125,10 @@ body {
 
   .finance-file-actions {
     justify-content: flex-start;
+  }
+
+  .business-workflow-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .finance-candidate-toolbar {

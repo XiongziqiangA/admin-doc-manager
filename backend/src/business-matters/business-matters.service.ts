@@ -105,6 +105,20 @@ export class BusinessMattersService {
     return matter;
   }
 
+  async requireReadable(id: string) {
+    const matter = await this.prisma.businessMatter.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!matter) {
+      throw new NotFoundException("事项不存在");
+    }
+    return matter;
+  }
+
+  async requireEditableForRelatedData(id: string, user: PublicUser) {
+    return this.requireEditable(id, user);
+  }
+
   async update(id: string, dto: UpdateBusinessMatterDto, user: PublicUser) {
     const matter = await this.requireEditable(id, user);
     if (dto.ownerId === null) {

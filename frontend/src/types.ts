@@ -18,6 +18,11 @@ export type FinanceMaterialType =
 
 export type BusinessMatterType = "PROJECT" | "CONTRACT" | "REIMBURSEMENT" | "LOAN" | "PROCUREMENT" | "OTHER";
 export type BusinessMatterStatus = "PLANNING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type BusinessTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type BusinessTaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type BusinessFinanceKind = "LOAN" | "REIMBURSEMENT";
+export type BusinessFinanceStatus = "DRAFT" | "PENDING" | "APPROVED" | "PAID" | "SETTLED" | "REJECTED" | "CANCELLED";
+export type BusinessContractStatus = "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED";
 
 export interface FinanceAiConfig {
   enabled: boolean;
@@ -266,6 +271,104 @@ export interface BusinessMatterDocumentLink {
 export interface BusinessMatterDetail extends BusinessMatterRecord {
   children: BusinessMatterChild[];
   documents: BusinessMatterDocumentLink[];
+}
+
+export interface BusinessTaskRecord {
+  id: string;
+  matterId: string;
+  title: string;
+  description: string | null;
+  status: BusinessTaskStatus;
+  priority: BusinessTaskPriority;
+  dueDate: string | null;
+  completedAt: string | null;
+  assigneeId: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  assignee?: BusinessMatterPerson | null;
+  createdBy?: BusinessMatterPerson;
+}
+
+export interface BusinessContractRecord {
+  id: string;
+  matterId: string;
+  contractNo: string | null;
+  partyName: string;
+  signedAt: string | null;
+  effectiveAt: string | null;
+  expiresAt: string | null;
+  renewalNoticeDays: number;
+  amount: string | null;
+  status: BusinessContractStatus;
+  remark: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: BusinessMatterPerson;
+}
+
+export interface BusinessFinanceDocumentLink {
+  recordId: string;
+  documentId: string;
+  versionId: string | null;
+  relationType: string;
+  createdAt: string;
+  document: DocumentRecord;
+  version?: DocumentVersionRecord | null;
+}
+
+export interface BusinessFinanceRecord {
+  id: string;
+  matterId: string;
+  recordNo: string;
+  kind: BusinessFinanceKind;
+  status: BusinessFinanceStatus;
+  title: string;
+  amount: string;
+  currency: string;
+  occurredAt: string | null;
+  counterparty: string | null;
+  dueDate: string | null;
+  settledAt: string | null;
+  remark: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  documents: BusinessFinanceDocumentLink[];
+  createdBy?: BusinessMatterPerson;
+}
+
+export interface BusinessActivityRecord {
+  id: string;
+  matterId: string;
+  actorId: string;
+  action: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  actor: BusinessMatterPerson;
+}
+
+export interface BusinessWorkflowOverview {
+  matters: { total: number; inProgress: number };
+  tasks: { pending: number; overdue: number; dueSoon: number };
+  contracts: { dueSoon: number };
+  finance: {
+    loanCount: number;
+    loanAmount: string;
+    reimbursementCount: number;
+    reimbursementAmount: string;
+  };
+}
+
+export interface BusinessReminder {
+  kind: "TASK" | "CONTRACT";
+  id: string;
+  title: string;
+  dueAt: string | null;
+  overdue: boolean;
+  matter: { id: string; title: string; matterNo: string };
 }
 
 export interface ExportDocumentsPayload {

@@ -1080,6 +1080,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const syncSidebar = () => {
+      if (window.innerWidth < 960) {
+        setCollapsed(true);
+      }
+    };
+    syncSidebar();
+    window.addEventListener("resize", syncSidebar);
+    return () => window.removeEventListener("resize", syncSidebar);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = window.adminDocsDesktop?.onDroppedFiles((payload) => {
       window.adminDocsDesktop?.debug("renderer-drop-received", {
         fileCount: payload.files.length,

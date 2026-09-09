@@ -100,6 +100,59 @@ enum BusinessMatterStatus {
   CANCELLED
 }
 
+enum BusinessTaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BusinessTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum BusinessFinanceKind {
+  LOAN
+  REIMBURSEMENT
+}
+
+enum BusinessFinanceStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  PAID
+  SETTLED
+  REJECTED
+  CANCELLED
+}
+
+enum BusinessContractStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum BusinessActivityAction {
+  MATTER_CREATED
+  MATTER_UPDATED
+  MATTER_DELETED
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_COMPLETED
+  TASK_DELETED
+  CONTRACT_UPDATED
+  CONTRACT_DELETED
+  FINANCE_CREATED
+  FINANCE_UPDATED
+  FINANCE_DELETED
+  FINANCE_DOCUMENT_ATTACHED
+  FINANCE_DOCUMENT_DETACHED
+}
+
 model User {
   id                    String                 @id @default(uuid())
   username              String                 @unique
@@ -123,6 +176,11 @@ model User {
   financeAnalysisJobs   FinanceAnalysisJob[]   @relation("FinanceAnalysisCreatedBy")
   ownedBusinessMatters  BusinessMatter[]      @relation("BusinessMatterOwner")
   createdBusinessMatters BusinessMatter[]     @relation("BusinessMatterCreatedBy")
+  assignedBusinessTasks BusinessMatterTask[]  @relation("BusinessTaskAssignee")
+  createdBusinessTasks  BusinessMatterTask[]  @relation("BusinessTaskCreatedBy")
+  createdBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceCreatedBy")
+  createdBusinessContracts BusinessMatterContract[] @relation("BusinessContractCreatedBy")
+  businessActivities    BusinessMatterActivity[]
 
   @@map("users")
 }
@@ -226,6 +284,10 @@ model BusinessMatter {
   department  Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   partner     Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   documents   BusinessMatterDocument[]
+  tasks       BusinessMatterTask[]
+  contract    BusinessMatterContract?
+  financeRecords BusinessMatterFinanceRecord[]
+  activities  BusinessMatterActivity[]
 
   @@index([type])
   @@index([status])
@@ -252,6 +314,114 @@ model BusinessMatterDocument {
   @@index([documentId])
   @@index([versionId])
   @@map("business_matter_documents")
+}
+
+model BusinessMatterTask {
+  id          String               @id @default(uuid())
+  matterId    String               @map("matter_id")
+  title       String
+  description String?              @db.Text
+  status      BusinessTaskStatus   @default(TODO)
+  priority    BusinessTaskPriority @default(NORMAL)
+  dueDate     DateTime?            @map("due_date")
+  completedAt DateTime?            @map("completed_at")
+  assigneeId  String?              @map("assignee_id")
+  createdById String               @map("created_by_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  deletedAt   DateTime?            @map("deleted_at")
+  matter      BusinessMatter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  assignee    User?                @relation("BusinessTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy   User                 @relation("BusinessTaskCreatedBy", fields: [createdById], references: [id])
+
+  @@index([matterId, status])
+  @@index([assigneeId, status])
+  @@index([dueDate])
+  @@index([deletedAt])
+  @@map("business_matter_tasks")
+}
+
+model BusinessMatterContract {
+  id                String                 @id @default(uuid())
+  matterId          String                 @unique @map("matter_id")
+  contractNo        String?                @map("contract_no")
+  partyName         String                 @map("party_name")
+  signedAt          DateTime?              @map("signed_at")
+  effectiveAt       DateTime?              @map("effective_at")
+  expiresAt         DateTime?              @map("expires_at")
+  renewalNoticeDays Int                    @default(30) @map("renewal_notice_days")
+  amount            Decimal?               @db.Decimal(15, 2)
+  status            BusinessContractStatus @default(DRAFT)
+  remark            String?
+  createdById       String                 @map("created_by_id")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  matter            BusinessMatter         @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  createdBy         User                   @relation("BusinessContractCreatedBy", fields: [createdById], references: [id])
+
+  @@index([expiresAt, status])
+  @@index([createdById])
+  @@map("business_matter_contracts")
+}
+
+model BusinessMatterFinanceRecord {
+  id           String                         @id @default(uuid())
+  matterId     String                         @map("matter_id")
+  recordNo     String                         @unique @map("record_no")
+  kind         BusinessFinanceKind
+  status       BusinessFinanceStatus          @default(DRAFT)
+  title        String
+  amount       Decimal                        @db.Decimal(15, 2)
+  currency     String                         @default("CNY")
+  occurredAt   DateTime?                      @map("occurred_at")
+  counterparty String?
+  dueDate      DateTime?                      @map("due_date")
+  settledAt    DateTime?                      @map("settled_at")
+  remark       String?
+  createdById  String                         @map("created_by_id")
+  createdAt    DateTime                       @default(now()) @map("created_at")
+  updatedAt    DateTime                       @updatedAt @map("updated_at")
+  deletedAt    DateTime?                      @map("deleted_at")
+  matter       BusinessMatter                 @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  createdBy    User                           @relation("BusinessFinanceCreatedBy", fields: [createdById], references: [id])
+  documents    BusinessMatterFinanceDocument[]
+
+  @@index([matterId, kind, status])
+  @@index([dueDate])
+  @@index([deletedAt])
+  @@map("business_matter_finance_records")
+}
+
+model BusinessMatterFinanceDocument {
+  recordId     String                        @map("record_id")
+  documentId   String                        @map("document_id")
+  versionId    String?                       @map("version_id")
+  relationType String                        @default("VOUCHER") @map("relation_type")
+  createdAt    DateTime                      @default(now()) @map("created_at")
+  record       BusinessMatterFinanceRecord  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  document     Document                      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      DocumentVersion?              @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@id([recordId, documentId])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("business_matter_finance_documents")
+}
+
+model BusinessMatterActivity {
+  id        String                 @id @default(uuid())
+  matterId  String                 @map("matter_id")
+  actorId   String                 @map("actor_id")
+  action    BusinessActivityAction
+  summary   String
+  metadata  Json?
+  createdAt DateTime               @default(now()) @map("created_at")
+  matter    BusinessMatter         @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  actor     User                   @relation(fields: [actorId], references: [id])
+
+  @@index([matterId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("business_matter_activities")
 }
 
 model Document {
@@ -282,6 +452,7 @@ model Document {
   financePackageItems FinancePackageItem[]
   financePackageSuggestions FinancePackageSuggestion[]
   businessMatterLinks BusinessMatterDocument[]
+  businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -314,6 +485,7 @@ model DocumentVersion {
   financePackageItems FinancePackageItem[]
   financePackageSuggestions FinancePackageSuggestion[]
   businessMatterLinks BusinessMatterDocument[]
+  businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
 
   @@unique([documentId, versionNo])
   @@index([documentId])

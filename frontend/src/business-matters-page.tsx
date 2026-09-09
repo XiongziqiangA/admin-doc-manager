@@ -51,6 +51,7 @@ import type {
   PublicUser,
   UserRecord,
 } from "./types";
+import { BusinessWorkflowOverviewPanel, BusinessWorkflowPanel } from "./business-workflow-panel";
 
 const typeLabels: Record<BusinessMatterType, string> = {
   PROJECT: "项目",
@@ -122,6 +123,7 @@ export function BusinessMattersPage({
   const [attachKeyword, setAttachKeyword] = useState("");
   const [availableDocuments, setAvailableDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [workflowRevision, setWorkflowRevision] = useState(0);
   const [form] = Form.useForm<BusinessMatterFormValues>();
 
   const isAdmin = currentUser.role === "ADMIN";
@@ -186,6 +188,7 @@ export function BusinessMattersPage({
 
   const openDetail = async (record: BusinessMatterRecord) => {
     setDetailLoading(true);
+    void loadUsers();
     try {
       setSelectedMatter(await getBusinessMatter(record.id));
     } catch (error) {
@@ -516,6 +519,8 @@ export function BusinessMattersPage({
         </Space>
       </section>
 
+      <BusinessWorkflowOverviewPanel revision={workflowRevision} />
+
       <section className="page-band">
         <Table
           rowKey="id"
@@ -694,6 +699,14 @@ export function BusinessMattersPage({
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未关联文件" />
               )}
             </section>
+
+            <BusinessWorkflowPanel
+              matter={selectedMatter}
+              currentUser={currentUser}
+              users={users}
+              onOpenDocument={onOpenDocument}
+              onChanged={() => setWorkflowRevision((value) => value + 1)}
+            />
           </div>
         )}
       </Drawer>

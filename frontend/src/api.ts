@@ -6,6 +6,13 @@ import type {
   BusinessMatterDetail,
   BusinessMatterDocumentLink,
   BusinessMatterRecord,
+  BusinessActivityRecord,
+  BusinessContractRecord,
+  BusinessFinanceDocumentLink,
+  BusinessFinanceRecord,
+  BusinessReminder,
+  BusinessTaskRecord,
+  BusinessWorkflowOverview,
   CategoryNode,
   DepartmentRecord,
   DocumentListQuery,
@@ -153,6 +160,93 @@ export async function detachBusinessMatterDocument(id: string, documentId: strin
     method: "DELETE",
     url: `/business-matters/${id}/documents/${documentId}`,
   });
+}
+
+export async function listBusinessTasks(matterId: string, params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<BusinessTaskRecord>>({
+    method: "GET",
+    url: `/business-matters/${matterId}/tasks`,
+    params: { page: 1, pageSize: 50, ...params },
+  });
+}
+
+export async function createBusinessTask(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessTaskRecord>({ method: "POST", url: `/business-matters/${matterId}/tasks`, data: payload });
+}
+
+export async function updateBusinessTask(matterId: string, taskId: string, payload: Record<string, unknown>) {
+  return request<BusinessTaskRecord>({ method: "PATCH", url: `/business-matters/${matterId}/tasks/${taskId}`, data: payload });
+}
+
+export async function deleteBusinessTask(matterId: string, taskId: string) {
+  return request<BusinessTaskRecord>({ method: "DELETE", url: `/business-matters/${matterId}/tasks/${taskId}` });
+}
+
+export async function getBusinessContract(matterId: string) {
+  return request<BusinessContractRecord | null>({ method: "GET", url: `/business-matters/${matterId}/contract` });
+}
+
+export async function upsertBusinessContract(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessContractRecord>({ method: "PUT", url: `/business-matters/${matterId}/contract`, data: payload });
+}
+
+export async function deleteBusinessContract(matterId: string) {
+  return request<BusinessContractRecord>({ method: "DELETE", url: `/business-matters/${matterId}/contract` });
+}
+
+export async function listBusinessFinanceRecords(matterId: string, params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<BusinessFinanceRecord>>({
+    method: "GET",
+    url: `/business-matters/${matterId}/finance-records`,
+    params: { page: 1, pageSize: 50, ...params },
+  });
+}
+
+export async function createBusinessFinanceRecord(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessFinanceRecord>({ method: "POST", url: `/business-matters/${matterId}/finance-records`, data: payload });
+}
+
+export async function updateBusinessFinanceRecord(matterId: string, recordId: string, payload: Record<string, unknown>) {
+  return request<BusinessFinanceRecord>({ method: "PATCH", url: `/business-matters/${matterId}/finance-records/${recordId}`, data: payload });
+}
+
+export async function deleteBusinessFinanceRecord(matterId: string, recordId: string) {
+  return request<BusinessFinanceRecord>({ method: "DELETE", url: `/business-matters/${matterId}/finance-records/${recordId}` });
+}
+
+export async function attachBusinessFinanceDocuments(
+  matterId: string,
+  recordId: string,
+  payload: { documentIds: string[]; relationType?: string },
+) {
+  return request<{ recordId: string; addedCount: number }>({
+    method: "POST",
+    url: `/business-matters/${matterId}/finance-records/${recordId}/documents`,
+    data: payload,
+  });
+}
+
+export async function detachBusinessFinanceDocument(matterId: string, recordId: string, documentId: string) {
+  return request<BusinessFinanceDocumentLink>({
+    method: "DELETE",
+    url: `/business-matters/${matterId}/finance-records/${recordId}/documents/${documentId}`,
+  });
+}
+
+export async function listBusinessActivities(matterId: string, params: { page?: number; pageSize?: number } = {}) {
+  return request<ApiList<BusinessActivityRecord>>({
+    method: "GET",
+    url: `/business-matters/${matterId}/activities`,
+    params: { page: 1, pageSize: 30, ...params },
+  });
+}
+
+export async function getBusinessWorkflowOverview() {
+  return request<BusinessWorkflowOverview>({ method: "GET", url: "/business-workflow/overview" });
+}
+
+export async function listBusinessReminders() {
+  return request<{ generatedAt: string; items: BusinessReminder[] }>({ method: "GET", url: "/business-workflow/reminders" });
 }
 
 export async function getDocument(id: string) {
