@@ -290,6 +290,7 @@ export interface BusinessTaskRecord {
   completedAt: string | null;
   completedById: string | null;
   completionNote: string | null;
+  cancelledAt: string | null;
   cancelledById: string | null;
   cancellationReason: string | null;
   assigneeId: string | null;

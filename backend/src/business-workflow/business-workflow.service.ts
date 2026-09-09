@@ -110,6 +110,7 @@ export class BusinessWorkflowService {
         completedAt: null,
         completedById: null,
         completionNote,
+        cancelledAt: null,
         cancelledById: null,
         cancellationReason,
         assigneeId,
@@ -177,6 +178,11 @@ export class BusinessWorkflowService {
         : nextStatus === BusinessTaskStatus.COMPLETED
           ? task.completedAt ?? new Date()
           : null,
+      cancelledAt: dto.status === undefined
+        ? undefined
+        : nextStatus === BusinessTaskStatus.CANCELLED
+          ? task.cancelledAt ?? new Date()
+          : null,
     };
     const updated = await this.prisma.businessMatterTask.update({
       where: { id: task.id },
@@ -197,7 +203,11 @@ export class BusinessWorkflowService {
         ["负责人", task.assigneeId, updated.assigneeId],
         ["截止日期", task.dueDate, updated.dueDate],
         ["完成说明", task.completionNote, updated.completionNote],
+        ["完成时间", task.completedAt, updated.completedAt],
+        ["完成人", task.completedById, updated.completedById],
         ["取消原因", task.cancellationReason, updated.cancellationReason],
+        ["取消时间", task.cancelledAt, updated.cancelledAt],
+        ["取消人", task.cancelledById, updated.cancelledById],
       ]),
     });
     return updated;

@@ -352,6 +352,39 @@ describe("BusinessWorkflowService", () => {
     );
   });
 
+  it("records the cancellation time and responsible person", async () => {
+    prisma.businessMatterTask.findFirst.mockResolvedValue({
+      id: "task-1",
+      title: "准备材料",
+      status: BusinessTaskStatus.IN_PROGRESS,
+      progress: 40,
+      assigneeId: user.id,
+      completedAt: null,
+      cancelledAt: null,
+      cancellationReason: null,
+    });
+    prisma.businessMatterTask.update.mockResolvedValue({
+      id: "task-1",
+      title: "准备材料",
+      status: BusinessTaskStatus.CANCELLED,
+    });
+
+    await service.updateTask("matter-1", "task-1", {
+      status: BusinessTaskStatus.CANCELLED,
+      cancellationReason: "事项已取消",
+    }, user);
+
+    expect(prisma.businessMatterTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cancelledAt: expect.any(Date),
+          cancelledBy: { connect: { id: user.id } },
+          cancellationReason: "事项已取消",
+        }),
+      }),
+    );
+  });
+
   it("rejects a contract with reversed dates before writing", async () => {
     matters.requireEditableForRelatedData.mockResolvedValue({ type: BusinessMatterType.CONTRACT });
 

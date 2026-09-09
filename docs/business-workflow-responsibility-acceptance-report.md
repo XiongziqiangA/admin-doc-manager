@@ -104,15 +104,16 @@ GET    /api/business-matters/:matterId/activities
 
 - `20260909150000_add_business_responsibility_fields`：任务和财务责任字段、实际执行人及时间字段。
 - `20260909160000_add_business_follow_ups`：人工跟进表、跟进方式枚举、责任索引。
+- `20260909170000_add_task_cancellation_timestamp`：任务取消时间字段，并用既有 `updated_at` 为历史已取消任务做兼容回填。
 - 操作记录复用 `business_matter_activities`，通过 JSON `metadata` 保存差异、快照和关联信息。
 
-当前 Docker 数据库已应用 16 个迁移，`prisma migrate status` 返回 `Database schema is up to date`。
+当前 Docker 数据库已应用 17 个迁移，`prisma migrate status` 返回 `Database schema is up to date`。
 
 ## 5. 验证证据
 
 ### 自动化验证
 
-- 后端测试：27 个测试文件，125 个测试全部通过。
+- 后端测试：27 个测试文件，126 个测试全部通过。
 - 后端 TypeScript 类型检查通过。
 - 前端 TypeScript 类型检查通过。
 - 桌面端 TypeScript 类型检查通过。

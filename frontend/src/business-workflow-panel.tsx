@@ -841,7 +841,7 @@ export function BusinessWorkflowPanel({
                     <Progress percent={task.progress} size="small" status={task.status === "CANCELLED" ? "exception" : task.status === "COMPLETED" ? "success" : "active"} />
                     {task.description ? <Typography.Text>{task.description}</Typography.Text> : null}
                     {task.completionNote ? <Typography.Text type="success">完成说明：{task.completionNote}</Typography.Text> : null}
-                    {task.cancellationReason ? <Typography.Text type="danger">取消原因：{task.cancellationReason}</Typography.Text> : null}
+                    {task.cancellationReason ? <Typography.Text type="danger">取消原因：{task.cancellationReason} · 取消时间：{formatDateTime(task.cancelledAt)}</Typography.Text> : null}
                   </Space>
                 }
               />
