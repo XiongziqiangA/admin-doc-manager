@@ -8,6 +8,7 @@ import type {
   BusinessMatterRecord,
   BusinessActivityRecord,
   BusinessContractRecord,
+  BusinessFollowUpRecord,
   BusinessFinanceDocumentLink,
   BusinessFinanceRecord,
   BusinessReminder,
@@ -180,6 +181,18 @@ export async function updateBusinessTask(matterId: string, taskId: string, paylo
 
 export async function deleteBusinessTask(matterId: string, taskId: string) {
   return request<BusinessTaskRecord>({ method: "DELETE", url: `/business-matters/${matterId}/tasks/${taskId}` });
+}
+
+export async function listBusinessFollowUps(matterId: string, params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<BusinessFollowUpRecord>>({
+    method: "GET",
+    url: `/business-matters/${matterId}/follow-ups`,
+    params: { page: 1, pageSize: 50, ...params },
+  });
+}
+
+export async function createBusinessFollowUp(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessFollowUpRecord>({ method: "POST", url: `/business-matters/${matterId}/follow-ups`, data: payload });
 }
 
 export async function getBusinessContract(matterId: string) {

@@ -20,6 +20,7 @@ export type BusinessMatterType = "PROJECT" | "CONTRACT" | "REIMBURSEMENT" | "LOA
 export type BusinessMatterStatus = "PLANNING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type BusinessTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type BusinessTaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type BusinessFollowUpMethod = "CALL" | "WECHAT" | "EMAIL" | "MEETING" | "ONSITE" | "OTHER";
 export type BusinessFinanceKind = "LOAN" | "REIMBURSEMENT";
 export type BusinessFinanceStatus = "DRAFT" | "PENDING" | "APPROVED" | "PAID" | "SETTLED" | "REJECTED" | "CANCELLED";
 export type BusinessContractStatus = "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED";
@@ -301,6 +302,22 @@ export interface BusinessTaskRecord {
   cancelledBy?: BusinessMatterPerson | null;
 }
 
+export interface BusinessFollowUpRecord {
+  id: string;
+  matterId: string;
+  method: BusinessFollowUpMethod;
+  content: string;
+  result: string | null;
+  nextAction: string | null;
+  nextAssigneeId: string | null;
+  nextDueAt: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: BusinessMatterPerson;
+  nextAssignee?: BusinessMatterPerson | null;
+}
+
 export interface BusinessContractRecord {
   id: string;
   matterId: string;
@@ -385,6 +402,7 @@ export interface BusinessActivityRecord {
 export interface BusinessWorkflowOverview {
   matters: { total: number; inProgress: number };
   tasks: { pending: number; overdue: number; dueSoon: number };
+  followUps: { pending: number; overdue: number; dueSoon: number };
   contracts: { dueSoon: number };
   finance: {
     loanCount: number;
@@ -395,7 +413,7 @@ export interface BusinessWorkflowOverview {
 }
 
 export interface BusinessReminder {
-  kind: "TASK" | "CONTRACT";
+  kind: "TASK" | "FOLLOW_UP" | "CONTRACT";
   id: string;
   title: string;
   dueAt: string | null;

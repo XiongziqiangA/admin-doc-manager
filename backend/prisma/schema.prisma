@@ -114,6 +114,15 @@ enum BusinessTaskPriority {
   URGENT
 }
 
+enum BusinessFollowUpMethod {
+  CALL
+  WECHAT
+  EMAIL
+  MEETING
+  ONSITE
+  OTHER
+}
+
 enum BusinessFinanceKind {
   LOAN
   REIMBURSEMENT
@@ -144,6 +153,7 @@ enum BusinessActivityAction {
   TASK_UPDATED
   TASK_COMPLETED
   TASK_DELETED
+  FOLLOW_UP_CREATED
   CONTRACT_UPDATED
   CONTRACT_DELETED
   FINANCE_CREATED
@@ -180,6 +190,8 @@ model User {
   createdBusinessTasks  BusinessMatterTask[]  @relation("BusinessTaskCreatedBy")
   completedBusinessTasks BusinessMatterTask[] @relation("BusinessTaskCompletedBy")
   cancelledBusinessTasks BusinessMatterTask[] @relation("BusinessTaskCancelledBy")
+  createdBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpCreatedBy")
+  assignedBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpNextAssignee")
   createdBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceCreatedBy")
   appliedBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceApplicant")
   handledBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceHandler")
@@ -298,6 +310,7 @@ model BusinessMatter {
   partner     Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   documents   BusinessMatterDocument[]
   tasks       BusinessMatterTask[]
+  followUps   BusinessMatterFollowUp[]
   contract    BusinessMatterContract?
   financeRecords BusinessMatterFinanceRecord[]
   activities  BusinessMatterActivity[]
@@ -362,6 +375,30 @@ model BusinessMatterTask {
   @@index([dueDate])
   @@index([deletedAt])
   @@map("business_matter_tasks")
+}
+
+model BusinessMatterFollowUp {
+  id             String                  @id @default(uuid())
+  matterId       String                  @map("matter_id")
+  method         BusinessFollowUpMethod
+  content        String                  @db.Text
+  result         String?                 @db.Text
+  nextAction     String?                 @db.Text @map("next_action")
+  nextAssigneeId String?                 @map("next_assignee_id")
+  nextDueAt      DateTime?               @map("next_due_at")
+  createdById    String                  @map("created_by_id")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  deletedAt      DateTime?               @map("deleted_at")
+  matter         BusinessMatter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  nextAssignee   User?                   @relation("BusinessFollowUpNextAssignee", fields: [nextAssigneeId], references: [id], onDelete: SetNull)
+  createdBy      User                    @relation("BusinessFollowUpCreatedBy", fields: [createdById], references: [id])
+
+  @@index([matterId, createdAt])
+  @@index([nextAssigneeId, nextDueAt])
+  @@index([nextDueAt])
+  @@index([deletedAt])
+  @@map("business_matter_follow_ups")
 }
 
 model BusinessMatterContract {

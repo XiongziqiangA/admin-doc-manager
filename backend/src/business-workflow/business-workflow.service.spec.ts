@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import {
+  BusinessFollowUpMethod,
   BusinessContractStatus,
   BusinessFinanceKind,
   BusinessFinanceStatus,
@@ -23,6 +24,11 @@ describe("BusinessWorkflowService", () => {
       count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+    },
+    businessMatterFollowUp: {
+      findMany: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
     },
     businessMatterContract: {
       findUnique: vi.fn(),
@@ -124,6 +130,119 @@ describe("BusinessWorkflowService", () => {
     expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "TASK_CREATED" }) }),
     );
+  });
+
+  it("requires a next assignee when a next follow-up date is provided", async () => {
+    await expect(
+      service.createFollowUp(
+        "matter-1",
+        {
+          method: BusinessFollowUpMethod.CALL,
+          content: "已联系合作方",
+          nextDueAt: "2026-09-20T09:00:00.000Z",
+        },
+        user,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterFollowUp.create).not.toHaveBeenCalled();
+  });
+
+  it("prevents an employee from assigning the next follow-up to another employee", async () => {
+    await expect(
+      service.createFollowUp(
+        "matter-1",
+        {
+          method: BusinessFollowUpMethod.WECHAT,
+          content: "发送了资料",
+          nextAssigneeId: "user-2",
+          nextDueAt: "2026-09-20T09:00:00.000Z",
+        },
+        user,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.businessMatterFollowUp.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a detailed follow-up and records it in the activity stream", async () => {
+    prisma.businessMatterFollowUp.create.mockResolvedValue({
+      id: "follow-up-1",
+      content: "已与供应商确认交付时间",
+      nextDueAt: new Date("2026-09-20T09:00:00.000Z"),
+    });
+
+    await service.createFollowUp(
+      "matter-1",
+      {
+        method: BusinessFollowUpMethod.MEETING,
+        content: " 已与供应商确认交付时间 ",
+        result: "对方承诺周五发货",
+        nextAction: "周五核对物流单号",
+        nextAssigneeId: user.id,
+        nextDueAt: "2026-09-20T09:00:00.000Z",
+      },
+      user,
+    );
+
+    expect(prisma.businessMatterFollowUp.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          method: BusinessFollowUpMethod.MEETING,
+          content: "已与供应商确认交付时间",
+          result: "对方承诺周五发货",
+          nextAction: "周五核对物流单号",
+          nextAssigneeId: user.id,
+          nextDueAt: new Date("2026-09-20T09:00:00.000Z"),
+          createdById: user.id,
+        }),
+      }),
+    );
+    expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "FOLLOW_UP_CREATED",
+          summary: "记录一次会议跟进",
+        }),
+      }),
+    );
+  });
+
+  it("includes assigned follow-ups in the personal workflow overview", async () => {
+    prisma.businessMatter.count.mockResolvedValueOnce(8).mockResolvedValueOnce(3);
+    prisma.businessMatterTask.count.mockResolvedValueOnce(5).mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    prisma.businessMatterFollowUp.count.mockResolvedValueOnce(4).mockResolvedValueOnce(2).mockResolvedValueOnce(1);
+    prisma.businessMatterContract.count.mockResolvedValue(1);
+    prisma.businessMatterFinanceRecord.aggregate
+      .mockResolvedValueOnce({ _sum: { amount: null }, _count: { _all: 0 } })
+      .mockResolvedValueOnce({ _sum: { amount: null }, _count: { _all: 0 } });
+
+    const overview = await service.getOverview(user);
+
+    expect(overview.followUps).toEqual({ pending: 4, overdue: 2, dueSoon: 1 });
+  });
+
+  it("returns assigned follow-ups as personal reminders", async () => {
+    const nextDueAt = new Date(Date.now() - 60_000);
+    prisma.businessMatterTask.findMany.mockResolvedValue([]);
+    prisma.businessMatterContract.findMany.mockResolvedValue([]);
+    prisma.businessMatterFollowUp.findMany.mockResolvedValue([
+      {
+        id: "follow-up-1",
+        content: "联系供应商确认发货",
+        nextDueAt,
+        matter: { id: "matter-1", title: "采购事项", matterNo: "MAT-1" },
+      },
+    ]);
+
+    const reminders = await service.listReminders(user);
+
+    expect(reminders.items).toEqual([
+      expect.objectContaining({
+        kind: "FOLLOW_UP",
+        id: "follow-up-1",
+        title: "跟进：联系供应商确认发货",
+        overdue: true,
+      }),
+    ]);
   });
 
   it("sets completion time when a task is completed", async () => {

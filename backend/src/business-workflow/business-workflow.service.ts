@@ -26,7 +26,9 @@ import { BusinessMattersService } from "../business-matters/business-matters.ser
 import { PrismaService } from "../prisma/prisma.service";
 import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
+import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
+import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
 import { UpdateBusinessFinanceRecordDto } from "./dto/update-business-finance-record.dto";
@@ -175,6 +177,70 @@ export class BusinessWorkflowService {
     });
     await this.logActivity(matterId, user, BusinessActivityAction.TASK_DELETED, `删除跟进任务“${task.title}”`);
     return result;
+  }
+
+  async listFollowUps(matterId: string, query: ListBusinessFollowUpsDto) {
+    await this.businessMatters.requireReadable(matterId);
+    const where: Prisma.BusinessMatterFollowUpWhereInput = {
+      matterId,
+      deletedAt: null,
+      nextAssigneeId: query.nextAssigneeId,
+    };
+    const [items, totalItems] = await this.prisma.$transaction([
+      this.prisma.businessMatterFollowUp.findMany({
+        where,
+        include: this.followUpInclude(),
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.businessMatterFollowUp.count({ where }),
+    ]);
+    return {
+      items,
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / query.pageSize),
+      },
+    };
+  }
+
+  async createFollowUp(matterId: string, dto: CreateBusinessFollowUpDto, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    const content = this.normalizeText(dto.content, "跟进内容不能为空");
+    const nextAssigneeId = dto.nextAssigneeId?.trim() || null;
+    const nextDueAt = this.toDate(dto.nextDueAt);
+    if (nextDueAt && !nextAssigneeId) {
+      throw new BadRequestException("填写下一次跟进时间时必须指定下一责任人");
+    }
+    if (nextAssigneeId) {
+      if (user.role !== UserRole.ADMIN && nextAssigneeId !== user.id) {
+        throw new ForbiddenException("普通员工不能指定其他人的下一次跟进");
+      }
+      await this.ensureActiveUser(nextAssigneeId);
+    }
+    const followUp = await this.prisma.businessMatterFollowUp.create({
+      data: {
+        method: dto.method,
+        content,
+        result: this.optionalText(dto.result),
+        nextAction: this.optionalText(dto.nextAction),
+        nextAssigneeId,
+        nextDueAt,
+        matterId,
+        createdById: user.id,
+      },
+      include: this.followUpInclude(),
+    });
+    await this.logActivity(
+      matterId,
+      user,
+      BusinessActivityAction.FOLLOW_UP_CREATED,
+      `记录一次${this.followUpMethodLabel(dto.method)}跟进`,
+    );
+    return followUp;
   }
 
   async getContract(matterId: string) {
@@ -471,17 +537,26 @@ export class BusinessWorkflowService {
       status: { in: [BusinessTaskStatus.TODO, BusinessTaskStatus.IN_PROGRESS] },
       matter: { deletedAt: null },
     };
+    const activeFollowUpWhere: Prisma.BusinessMatterFollowUpWhereInput = {
+      deletedAt: null,
+      nextAssigneeId: user.id,
+      nextDueAt: { not: null },
+      matter: { deletedAt: null },
+    };
     const contractWhere: Prisma.BusinessMatterContractWhereInput = {
       expiresAt: { not: null, lte: nextSevenDays },
       status: { in: [BusinessContractStatus.DRAFT, BusinessContractStatus.ACTIVE] },
       matter: { deletedAt: null },
     };
-    const [matterTotal, matterInProgress, taskPending, taskOverdue, taskDueSoon, contractDueSoon, loan, reimbursement] = await Promise.all([
+    const [matterTotal, matterInProgress, taskPending, taskOverdue, taskDueSoon, followUpPending, followUpOverdue, followUpDueSoon, contractDueSoon, loan, reimbursement] = await Promise.all([
       this.prisma.businessMatter.count({ where: { deletedAt: null } }),
       this.prisma.businessMatter.count({ where: { deletedAt: null, status: BusinessMatterStatus.IN_PROGRESS } }),
       this.prisma.businessMatterTask.count({ where: activeTaskWhere }),
       this.prisma.businessMatterTask.count({ where: { ...activeTaskWhere, dueDate: { lt: now } } }),
       this.prisma.businessMatterTask.count({ where: { ...activeTaskWhere, dueDate: { gte: now, lte: nextSevenDays } } }),
+      this.prisma.businessMatterFollowUp.count({ where: activeFollowUpWhere }),
+      this.prisma.businessMatterFollowUp.count({ where: { ...activeFollowUpWhere, nextDueAt: { lt: now } } }),
+      this.prisma.businessMatterFollowUp.count({ where: { ...activeFollowUpWhere, nextDueAt: { gte: now, lte: nextSevenDays } } }),
       this.prisma.businessMatterContract.count({ where: contractWhere }),
       this.prisma.businessMatterFinanceRecord.aggregate({
         where: { deletedAt: null, kind: BusinessFinanceKind.LOAN, status: { not: BusinessFinanceStatus.CANCELLED } },
@@ -497,6 +572,7 @@ export class BusinessWorkflowService {
     return {
       matters: { total: matterTotal, inProgress: matterInProgress },
       tasks: { pending: taskPending, overdue: taskOverdue, dueSoon: taskDueSoon },
+      followUps: { pending: followUpPending, overdue: followUpOverdue, dueSoon: followUpDueSoon },
       contracts: { dueSoon: contractDueSoon },
       finance: {
         loanCount: loan._count._all,
@@ -510,7 +586,7 @@ export class BusinessWorkflowService {
   async listReminders(user: PublicUser) {
     const now = new Date();
     const nextSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const [tasks, contracts] = await Promise.all([
+    const [tasks, contracts, followUps] = await Promise.all([
       this.prisma.businessMatterTask.findMany({
         where: {
           deletedAt: null,
@@ -533,6 +609,17 @@ export class BusinessWorkflowService {
         orderBy: { expiresAt: "asc" },
         take: 50,
       }),
+      this.prisma.businessMatterFollowUp.findMany({
+        where: {
+          deletedAt: null,
+          nextAssigneeId: user.id,
+          nextDueAt: { not: null, lte: nextSevenDays },
+          matter: { deletedAt: null },
+        },
+        include: { matter: { select: { id: true, title: true, matterNo: true } } },
+        orderBy: { nextDueAt: "asc" },
+        take: 50,
+      }),
     ]);
     return {
       generatedAt: now,
@@ -552,6 +639,14 @@ export class BusinessWorkflowService {
           dueAt: contract.expiresAt,
           overdue: Boolean(contract.expiresAt && contract.expiresAt < now),
           matter: contract.matter,
+        })),
+        ...followUps.map((followUp) => ({
+          kind: "FOLLOW_UP" as const,
+          id: followUp.id,
+          title: `跟进：${followUp.content.slice(0, 80)}`,
+          dueAt: followUp.nextDueAt,
+          overdue: Boolean(followUp.nextDueAt && followUp.nextDueAt < now),
+          matter: followUp.matter,
         })),
       ].sort((left, right) => (left.dueAt?.getTime() ?? 0) - (right.dueAt?.getTime() ?? 0)),
     };
@@ -706,6 +801,13 @@ export class BusinessWorkflowService {
     };
   }
 
+  private followUpInclude(): Prisma.BusinessMatterFollowUpInclude {
+    return {
+      createdBy: { select: personSelect },
+      nextAssignee: { select: personSelect },
+    };
+  }
+
   private financeInclude(): Prisma.BusinessMatterFinanceRecordInclude {
     return {
       createdBy: { select: personSelect },
@@ -800,5 +902,17 @@ export class BusinessWorkflowService {
 
   private financeKindLabel(kind: BusinessFinanceKind) {
     return kind === BusinessFinanceKind.LOAN ? "借款记录" : "报销记录";
+  }
+
+  private followUpMethodLabel(method: string) {
+    const labels: Record<string, string> = {
+      CALL: "电话",
+      WECHAT: "微信",
+      EMAIL: "邮件",
+      MEETING: "会议",
+      ONSITE: "现场",
+      OTHER: "其他",
+    };
+    return labels[method] ?? "其他";
   }
 }

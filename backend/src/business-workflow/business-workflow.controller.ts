@@ -7,7 +7,9 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { PublicUser } from "../users/user.presenter";
 import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
+import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
+import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessActivitiesDto } from "./dto/list-business-activities.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
@@ -56,6 +58,20 @@ export class BusinessWorkflowController {
   @Delete("business-matters/:matterId/tasks/:taskId")
   removeTask(@Param("matterId") matterId: string, @Param("taskId") taskId: string, @CurrentUser() user: PublicUser) {
     return this.workflow.removeTask(matterId, taskId, user);
+  }
+
+  @Get("business-matters/:matterId/follow-ups")
+  listFollowUps(@Param("matterId") matterId: string, @Query() query: ListBusinessFollowUpsDto) {
+    return this.workflow.listFollowUps(matterId, query);
+  }
+
+  @Post("business-matters/:matterId/follow-ups")
+  createFollowUp(
+    @Param("matterId") matterId: string,
+    @Body() dto: CreateBusinessFollowUpDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.createFollowUp(matterId, dto, user);
   }
 
   @Get("business-matters/:matterId/contract")

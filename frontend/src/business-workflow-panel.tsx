@@ -34,6 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   attachBusinessFinanceDocuments,
+  createBusinessFollowUp,
   createBusinessFinanceRecord,
   createBusinessTask,
   deleteBusinessContract,
@@ -45,6 +46,7 @@ import {
   getBusinessWorkflowOverview,
   listBusinessActivities,
   listBusinessFinanceRecords,
+  listBusinessFollowUps,
   listBusinessReminders,
   listBusinessTasks,
   listDocuments,
@@ -56,6 +58,8 @@ import type {
   BusinessActivityRecord,
   BusinessContractRecord,
   BusinessContractStatus,
+  BusinessFollowUpMethod,
+  BusinessFollowUpRecord,
   BusinessFinanceKind,
   BusinessFinanceRecord,
   BusinessFinanceStatus,
@@ -98,6 +102,15 @@ const priorityColors: Record<BusinessTaskPriority, string> = {
   URGENT: "red",
 };
 
+const followUpMethodLabels: Record<BusinessFollowUpMethod, string> = {
+  CALL: "电话",
+  WECHAT: "微信",
+  EMAIL: "邮件",
+  MEETING: "会议",
+  ONSITE: "现场",
+  OTHER: "其他",
+};
+
 const financeKindLabels: Record<BusinessFinanceKind, string> = {
   LOAN: "借款",
   REIMBURSEMENT: "报销",
@@ -130,6 +143,15 @@ interface TaskFormValues {
   assigneeId?: string;
   completionNote?: string;
   cancellationReason?: string;
+}
+
+interface FollowUpFormValues {
+  method: BusinessFollowUpMethod;
+  content: string;
+  result?: string;
+  nextAction?: string;
+  nextAssigneeId?: string;
+  nextDueAt?: string;
 }
 
 interface FinanceFormValues {
@@ -205,6 +227,9 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
           <Statistic title="我的待办" value={overview.tasks.pending} suffix="项" />
           <Statistic title="已逾期" value={overview.tasks.overdue} suffix="项" valueStyle={overview.tasks.overdue ? { color: "#cf1322" } : undefined} />
           <Statistic title="7 天内到期" value={overview.tasks.dueSoon} suffix="项" />
+          <Statistic title="待跟进" value={overview.followUps.pending} suffix="项" />
+          <Statistic title="逾期跟进" value={overview.followUps.overdue} suffix="项" valueStyle={overview.followUps.overdue ? { color: "#cf1322" } : undefined} />
+          <Statistic title="7 天内跟进" value={overview.followUps.dueSoon} suffix="项" />
           <Statistic title="合同提醒" value={overview.contracts.dueSoon} suffix="项" />
           <Statistic title="借款记录" value={overview.finance.loanCount} suffix="笔" />
           <Statistic title="借款金额" value={Number(overview.finance.loanAmount)} precision={2} suffix="元" />
@@ -224,8 +249,8 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
               <List.Item>
                 <div className="business-workflow-reminder-row">
                   <Space wrap size={6}>
-                    <Tag color={item.overdue ? "red" : item.kind === "CONTRACT" ? "gold" : "blue"}>
-                      {item.overdue ? "已逾期" : item.kind === "CONTRACT" ? "合同" : "待办"}
+                    <Tag color={item.overdue ? "red" : item.kind === "CONTRACT" ? "gold" : item.kind === "FOLLOW_UP" ? "cyan" : "blue"}>
+                      {item.overdue ? "已逾期" : item.kind === "CONTRACT" ? "合同" : item.kind === "FOLLOW_UP" ? "跟进" : "待办"}
                     </Tag>
                     <Typography.Text strong>{item.title}</Typography.Text>
                     <Typography.Text type="secondary">{item.matter.title}</Typography.Text>
@@ -259,6 +284,7 @@ export function BusinessWorkflowPanel({
   onChanged,
 }: BusinessWorkflowPanelProps) {
   const [tasks, setTasks] = useState<BusinessTaskRecord[]>([]);
+  const [followUps, setFollowUps] = useState<BusinessFollowUpRecord[]>([]);
   const [financeRecords, setFinanceRecords] = useState<BusinessFinanceRecord[]>([]);
   const [contract, setContract] = useState<BusinessContractRecord | null>(null);
   const [activities, setActivities] = useState<BusinessActivityRecord[]>([]);
@@ -277,7 +303,10 @@ export function BusinessWorkflowPanel({
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherSubmitting, setVoucherSubmitting] = useState(false);
   const [taskView, setTaskView] = useState<TaskView>("all");
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
   const [taskForm] = Form.useForm<TaskFormValues>();
+  const [followUpForm] = Form.useForm<FollowUpFormValues>();
   const [financeForm] = Form.useForm<FinanceFormValues>();
   const [contractForm] = Form.useForm<ContractFormValues>();
   const taskStatusValue = Form.useWatch("status", taskForm);
@@ -288,13 +317,15 @@ export function BusinessWorkflowPanel({
   const loadWorkflow = async () => {
     setLoading(true);
     try {
-      const [taskResult, financeResult, contractResult, activityResult] = await Promise.all([
+      const [taskResult, followUpResult, financeResult, contractResult, activityResult] = await Promise.all([
         listBusinessTasks(matter.id, { pageSize: 100 }),
+        listBusinessFollowUps(matter.id, { pageSize: 100 }),
         listBusinessFinanceRecords(matter.id, { pageSize: 100 }),
         getBusinessContract(matter.id),
         listBusinessActivities(matter.id, { pageSize: 100 }),
       ]);
       setTasks(taskResult.items);
+      setFollowUps(followUpResult.items);
       setFinanceRecords(financeResult.items);
       setContract(contractResult);
       setActivities(activityResult.items);
@@ -312,6 +343,35 @@ export function BusinessWorkflowPanel({
   const refreshAfterChange = async () => {
     await loadWorkflow();
     onChanged();
+  };
+
+  const openFollowUpForm = () => {
+    followUpForm.resetFields();
+    followUpForm.setFieldsValue({ method: "CALL", nextAssigneeId: currentUser.id });
+    setFollowUpOpen(true);
+  };
+
+  const submitFollowUp = async () => {
+    try {
+      const values = await followUpForm.validateFields();
+      setFollowUpSubmitting(true);
+      await createBusinessFollowUp(matter.id, {
+        method: values.method,
+        content: values.content.trim(),
+        result: values.result?.trim() || null,
+        nextAction: values.nextAction?.trim() || null,
+        nextAssigneeId: values.nextAssigneeId || null,
+        nextDueAt: values.nextDueAt || null,
+      });
+      message.success("人工跟进已记录");
+      setFollowUpOpen(false);
+      await refreshAfterChange();
+    } catch (error) {
+      if (error && typeof error === "object" && "errorFields" in error) return;
+      message.error(`人工跟进保存失败：${formatApiError(error)}`);
+    } finally {
+      setFollowUpSubmitting(false);
+    }
   };
 
   const openTaskForm = (task?: BusinessTaskRecord) => {
@@ -690,6 +750,46 @@ export function BusinessWorkflowPanel({
     </section>
   );
 
+  const followUpTab = (
+    <section className="business-workflow-tab-section">
+      <div className="business-matter-section-heading">
+        <Typography.Text strong>人工跟进</Typography.Text>
+        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openFollowUpForm}>记录跟进</Button>
+      </div>
+      {followUps.length ? (
+        <List
+          dataSource={followUps}
+          renderItem={(followUp) => (
+            <List.Item>
+              <List.Item.Meta
+                title={
+                  <Space wrap>
+                    <Tag color="cyan">{followUpMethodLabels[followUp.method]}</Tag>
+                    <Typography.Text strong>{followUp.createdBy?.realName || "未知跟进人"}</Typography.Text>
+                    <Typography.Text type="secondary">{formatDateTime(followUp.createdAt)}</Typography.Text>
+                    {followUp.nextDueAt && new Date(followUp.nextDueAt) < new Date() ? <Tag color="red">跟进已逾期</Tag> : null}
+                  </Space>
+                }
+                description={
+                  <Space direction="vertical" size={2}>
+                    <Typography.Text>{followUp.content}</Typography.Text>
+                    {followUp.result ? <Typography.Text type="secondary">结果：{followUp.result}</Typography.Text> : null}
+                    {followUp.nextAction ? <Typography.Text>下一步：{followUp.nextAction}</Typography.Text> : null}
+                    {followUp.nextDueAt ? (
+                      <Typography.Text type="secondary">
+                        下次跟进：{followUp.nextAssignee?.realName || "未指定"} · {formatDateTime(followUp.nextDueAt)}
+                      </Typography.Text>
+                    ) : <Typography.Text type="secondary">暂未安排下一次跟进</Typography.Text>}
+                  </Space>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无人工跟进记录" />}
+    </section>
+  );
+
   const financeTab = (
     <section className="business-workflow-tab-section">
       <div className="business-matter-section-heading">
@@ -786,6 +886,7 @@ export function BusinessWorkflowPanel({
       <Tabs
         items={[
           { key: "tasks", label: `跟进任务 ${tasks.length}`, children: taskTab },
+          { key: "follow-ups", label: `人工跟进 ${followUps.length}`, children: followUpTab },
           { key: "finance", label: `借款与报销 ${financeRecords.length}`, children: financeTab },
           ...(matter.type === "CONTRACT" ? [{ key: "contract", label: "合同信息", children: contractTab }] : []),
           { key: "activity", label: `操作记录 ${activities.length}`, children: activityTab },
@@ -805,6 +906,31 @@ export function BusinessWorkflowPanel({
           {taskStatusValue === "COMPLETED" ? <Form.Item name="completionNote" label="完成说明" rules={[{ required: true, message: "请输入完成说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           {taskStatusValue === "CANCELLED" ? <Form.Item name="cancellationReason" label="取消原因" rules={[{ required: true, message: "请输入取消原因" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           <Form.Item name="description" label="说明"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title="记录人工跟进" open={followUpOpen} width={700} okText="保存" cancelText="取消" confirmLoading={followUpSubmitting} onOk={() => void submitFollowUp()} onCancel={() => setFollowUpOpen(false)} destroyOnHidden>
+        <Form form={followUpForm} layout="vertical">
+          <div className="business-workflow-form-grid">
+            <Form.Item name="method" label="跟进方式" rules={[{ required: true, message: "请选择跟进方式" }]}>
+              <Select options={Object.entries(followUpMethodLabels).map(([value, label]) => ({ value, label }))} />
+            </Form.Item>
+            <Form.Item name="nextDueAt" label="下一次跟进日期">
+              <Input type="date" />
+            </Form.Item>
+            <Form.Item name="nextAssigneeId" label="下一责任人">
+              <Select
+                allowClear={isAdmin}
+                disabled={!isAdmin}
+                options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))}
+              />
+            </Form.Item>
+          </div>
+          <Form.Item name="content" label="跟进内容" rules={[{ required: true, message: "请输入跟进内容" }]}>
+            <Input.TextArea rows={4} maxLength={4000} />
+          </Form.Item>
+          <Form.Item name="result" label="跟进结果"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
+          <Form.Item name="nextAction" label="下一步动作"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
         </Form>
       </Modal>
 
