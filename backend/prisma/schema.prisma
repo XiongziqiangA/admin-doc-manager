@@ -84,6 +84,22 @@ enum FinanceMaterialType {
   OTHER
 }
 
+enum BusinessMatterType {
+  PROJECT
+  CONTRACT
+  REIMBURSEMENT
+  LOAN
+  PROCUREMENT
+  OTHER
+}
+
+enum BusinessMatterStatus {
+  PLANNING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id                    String                 @id @default(uuid())
   username              String                 @unique
@@ -105,6 +121,8 @@ model User {
   financePackageTasks   FinancePackageTask[]   @relation("FinancePackageCreatedBy")
   financePackageExports FinancePackageExport[] @relation("FinancePackageExportedBy")
   financeAnalysisJobs   FinanceAnalysisJob[]   @relation("FinanceAnalysisCreatedBy")
+  ownedBusinessMatters  BusinessMatter[]      @relation("BusinessMatterOwner")
+  createdBusinessMatters BusinessMatter[]     @relation("BusinessMatterCreatedBy")
 
   @@map("users")
 }
@@ -121,6 +139,7 @@ model Department {
   children    Department[] @relation("DepartmentTree")
   users       User[]
   documents   Document[]
+  businessMatters BusinessMatter[]
 
   @@index([parentId])
   @@map("departments")
@@ -175,10 +194,64 @@ model Partner {
   updatedAt        DateTime          @updatedAt @map("updated_at")
   deletedAt        DateTime?         @map("deleted_at")
   documentPartners DocumentPartner[]
+  businessMatters  BusinessMatter[]
 
   @@index([type])
   @@index([status])
   @@map("partners")
+}
+
+model BusinessMatter {
+  id          String              @id @default(uuid())
+  matterNo    String              @unique @map("matter_no")
+  title       String
+  type        BusinessMatterType
+  status      BusinessMatterStatus @default(PLANNING)
+  parentId    String?             @map("parent_id")
+  ownerId     String              @map("owner_id")
+  createdById String              @map("created_by_id")
+  departmentId String?            @map("department_id")
+  partnerId   String?              @map("partner_id")
+  startDate   DateTime?           @map("start_date")
+  endDate     DateTime?           @map("end_date")
+  amount      Decimal?            @db.Decimal(15, 2)
+  remark      String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  deletedAt   DateTime?           @map("deleted_at")
+  parent      BusinessMatter?     @relation("BusinessMatterTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    BusinessMatter[]    @relation("BusinessMatterTree")
+  owner       User                @relation("BusinessMatterOwner", fields: [ownerId], references: [id])
+  createdBy   User                @relation("BusinessMatterCreatedBy", fields: [createdById], references: [id])
+  department  Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  partner     Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  documents   BusinessMatterDocument[]
+
+  @@index([type])
+  @@index([status])
+  @@index([parentId])
+  @@index([ownerId])
+  @@index([departmentId])
+  @@index([partnerId])
+  @@index([deletedAt])
+  @@map("business_matters")
+}
+
+model BusinessMatterDocument {
+  matterId     String          @map("matter_id")
+  documentId   String          @map("document_id")
+  versionId    String?         @map("version_id")
+  relationType String          @default("REFERENCE") @map("relation_type")
+  isPrimary    Boolean         @default(false) @map("is_primary")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  matter       BusinessMatter  @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  document     Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      DocumentVersion? @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@id([matterId, documentId])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("business_matter_documents")
 }
 
 model Document {
@@ -208,6 +281,7 @@ model Document {
   logs                DocumentLog[]
   financePackageItems FinancePackageItem[]
   financePackageSuggestions FinancePackageSuggestion[]
+  businessMatterLinks BusinessMatterDocument[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -239,6 +313,7 @@ model DocumentVersion {
   logs                DocumentLog[]
   financePackageItems FinancePackageItem[]
   financePackageSuggestions FinancePackageSuggestion[]
+  businessMatterLinks BusinessMatterDocument[]
 
   @@unique([documentId, versionNo])
   @@index([documentId])
