@@ -141,11 +141,14 @@ GET    /api/business-matters/:matterId/activities
   "ReminderCount": 0,
   "ReportItems": 1,
   "CsvStatus": 200,
-  "CsvBytes": 244
+  "CancellationTaskStatus": "CANCELLED",
+  "CancellationTimestampPresent": true,
+  "CancellationActorPresent": true,
+  "ActivityContainsCancellationChange": true
 }
 ```
 
-另已验证：缺少下一责任人的非法人工跟进请求返回 HTTP 400；普通员工把后续跟进指定给其他员工会被服务端拒绝；责任统计报表返回管理员数据。
+另已验证：缺少下一责任人的非法人工跟进请求返回 HTTP 400；普通员工把后续跟进指定给其他员工会被服务端拒绝；取消任务会返回取消状态、取消时间和取消人，操作记录包含“取消时间”变化；责任统计报表返回管理员数据。
 
 ### 浏览器界面验证
 
