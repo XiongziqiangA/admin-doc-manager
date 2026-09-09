@@ -52,7 +52,7 @@ import type {
   PublicUser,
   UserRecord,
 } from "./types";
-import { BusinessWorkflowOverviewPanel, BusinessWorkflowPanel } from "./business-workflow-panel";
+import { BusinessResponsibilityReportPanel, BusinessWorkflowOverviewPanel, BusinessWorkflowPanel } from "./business-workflow-panel";
 
 const typeLabels: Record<BusinessMatterType, string> = {
   PROJECT: "项目",
@@ -559,6 +559,7 @@ export function BusinessMattersPage({
       </section>
 
       <BusinessWorkflowOverviewPanel revision={workflowRevision} />
+      <BusinessResponsibilityReportPanel currentUser={currentUser} users={users} />
 
       <section className="page-band">
         <Table

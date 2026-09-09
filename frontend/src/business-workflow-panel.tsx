@@ -1,6 +1,7 @@
 import {
   CheckOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   FileAddOutlined,
   FileTextOutlined,
@@ -43,6 +44,7 @@ import {
   detachBusinessFinanceDocument,
   formatApiError,
   getBusinessContract,
+  getBusinessResponsibilityReport,
   getBusinessWorkflowOverview,
   listBusinessActivities,
   listBusinessFinanceRecords,
@@ -52,6 +54,7 @@ import {
   listDocuments,
   updateBusinessFinanceRecord,
   updateBusinessTask,
+  exportBusinessResponsibilityReport,
   upsertBusinessContract,
 } from "./api";
 import type {
@@ -65,6 +68,8 @@ import type {
   BusinessFinanceStatus,
   BusinessMatterDetail,
   BusinessReminder,
+  BusinessResponsibilityReport,
+  BusinessResponsibilityReportItem,
   BusinessTaskPriority,
   BusinessTaskRecord,
   BusinessTaskStatus,
@@ -264,6 +269,103 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无近期提醒" />
         )}
       </div>
+    </section>
+  );
+}
+
+interface BusinessResponsibilityReportPanelProps {
+  currentUser: PublicUser;
+  users: UserRecord[];
+}
+
+export function BusinessResponsibilityReportPanel({ currentUser, users }: BusinessResponsibilityReportPanelProps) {
+  const [report, setReport] = useState<BusinessResponsibilityReport | null>(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [userId, setUserId] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const params = { dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, userId };
+  const load = async () => {
+    setLoading(true);
+    try {
+      setReport(await getBusinessResponsibilityReport(params));
+    } catch (error) {
+      message.error(`责任统计加载失败：${formatApiError(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser.role === "ADMIN") void load();
+  }, [currentUser.role]);
+
+  if (currentUser.role !== "ADMIN") return null;
+
+  const downloadReport = async () => {
+    setExporting(true);
+    try {
+      const result = await exportBusinessResponsibilityReport(params);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.fileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      message.error(`责任报表导出失败：${formatApiError(error)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const columns: ColumnsType<BusinessResponsibilityReportItem> = [
+    { title: "员工", dataIndex: "realName", width: 120, fixed: "left" },
+    { title: "账号", dataIndex: "username", width: 140 },
+    { title: "待处理任务", dataIndex: ["tasks", "pending"], width: 110 },
+    { title: "已完成任务", dataIndex: ["tasks", "completed"], width: 110 },
+    { title: "逾期任务", dataIndex: ["tasks", "overdue"], width: 100, render: (value: number) => <Typography.Text type={value ? "danger" : undefined}>{value}</Typography.Text> },
+    { title: "借款经办", dataIndex: ["finance", "loansHandled"], width: 100 },
+    { title: "报销经办", dataIndex: ["finance", "reimbursementsHandled"], width: 100 },
+    { title: "审批数", dataIndex: ["finance", "approved"], width: 90 },
+    { title: "付款数", dataIndex: ["finance", "paid"], width: 90 },
+    { title: "结算数", dataIndex: ["finance", "settled"], width: 90 },
+    { title: "人工跟进", dataIndex: ["followUps", "created"], width: 100 },
+    { title: "逾期跟进", dataIndex: ["followUps", "overdue"], width: 100, render: (value: number) => <Typography.Text type={value ? "danger" : undefined}>{value}</Typography.Text> },
+  ];
+
+  return (
+    <section className="page-band business-responsibility-report">
+      <div className="business-matter-section-heading">
+        <Typography.Title level={4}>责任统计</Typography.Title>
+        <Space wrap>
+          <Input type="date" aria-label="统计开始日期" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <Input type="date" aria-label="统计结束日期" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="全部员工"
+            value={userId}
+            onChange={setUserId}
+            options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))}
+          />
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>查询</Button>
+          <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => void downloadReport()}>导出 CSV</Button>
+        </Space>
+      </div>
+      <Table<BusinessResponsibilityReportItem>
+        rowKey="userId"
+        size="small"
+        loading={loading}
+        dataSource={report?.items ?? []}
+        columns={columns}
+        pagination={false}
+        scroll={{ x: 1200 }}
+        locale={{ emptyText: report ? "暂无统计数据" : "请选择条件后查询" }}
+      />
     </section>
   );
 }
@@ -871,6 +973,12 @@ export function BusinessWorkflowPanel({
           <div>
             <Typography.Text>{activity.summary}</Typography.Text>
             <div><Typography.Text type="secondary">{activity.actor.realName || activity.actor.username} · {formatDateTime(activity.createdAt)}</Typography.Text></div>
+            {activity.metadata ? (
+              <details className="business-activity-details">
+                <summary>查看详细变化</summary>
+                <ActivityMetadataView metadata={activity.metadata} />
+              </details>
+            ) : null}
           </div>
         ),
       }))}
@@ -1011,4 +1119,35 @@ function formatDateTime(value?: string | null) {
 function formatAmount(value?: string | null, currency = "CNY") {
   if (value === null || value === undefined || value === "") return "-";
   return `${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+}
+
+function ActivityMetadataView({ metadata }: { metadata: Record<string, unknown> }) {
+  const changes = Array.isArray(metadata.changes) ? metadata.changes : [];
+  const snapshot = metadata.snapshot && typeof metadata.snapshot === "object" ? metadata.snapshot as Record<string, unknown> : null;
+  const related = metadata.related && typeof metadata.related === "object" ? metadata.related as Record<string, unknown> : null;
+  return (
+    <div className="business-activity-metadata">
+      {changes.length ? (
+        <List
+          size="small"
+          dataSource={changes}
+          renderItem={(change) => {
+            const item = change as { field?: unknown; before?: unknown; after?: unknown };
+            return <List.Item><Typography.Text>{String(item.field ?? "字段")}: {formatActivityValue(item.before)} → {formatActivityValue(item.after)}</Typography.Text></List.Item>;
+          }}
+        />
+      ) : null}
+      {snapshot ? <Typography.Text type="secondary">记录快照：{formatActivityObject(snapshot)}</Typography.Text> : null}
+      {related ? <Typography.Text type="secondary">关联信息：{formatActivityObject(related)}</Typography.Text> : null}
+    </div>
+  );
+}
+
+function formatActivityValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "未设置";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function formatActivityObject(value: Record<string, unknown>) {
+  return Object.entries(value).map(([key, item]) => `${key}=${formatActivityValue(item)}`).join("；");
 }

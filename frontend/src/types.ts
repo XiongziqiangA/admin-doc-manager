@@ -412,6 +412,21 @@ export interface BusinessWorkflowOverview {
   };
 }
 
+export interface BusinessResponsibilityReportItem {
+  userId: string;
+  username: string;
+  realName: string;
+  tasks: { pending: number; completed: number; overdue: number };
+  finance: { loansHandled: number; reimbursementsHandled: number; approved: number; paid: number; settled: number };
+  followUps: { created: number; overdue: number };
+}
+
+export interface BusinessResponsibilityReport {
+  generatedAt: string;
+  filters: { dateFrom: string | null; dateTo: string | null; userId: string | null };
+  items: BusinessResponsibilityReportItem[];
+}
+
 export interface BusinessReminder {
   kind: "TASK" | "FOLLOW_UP" | "CONTRACT";
   id: string;

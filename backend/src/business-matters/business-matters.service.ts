@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { BusinessMatterStatus, DocumentStatus, PartnerStatus, Prisma, UserRole, UserStatus } from "@prisma/client";
+import { BusinessActivityAction, BusinessMatterStatus, DocumentStatus, PartnerStatus, Prisma, UserRole, UserStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { PublicUser } from "../users/user.presenter";
@@ -39,7 +39,7 @@ export class BusinessMattersService {
       await this.ensureParentChain(null, dto.parentId);
     }
 
-    return this.prisma.businessMatter.create({
+    const matter = await this.prisma.businessMatter.create({
       data: {
         matterNo: this.generateMatterNo(),
         title: this.normalizeTitle(dto.title),
@@ -60,6 +60,18 @@ export class BusinessMattersService {
       },
       include: this.listInclude(),
     });
+    await this.logActivity(matter.id, user, BusinessActivityAction.MATTER_CREATED, `创建事项“${matter.title}”`, {
+      objectType: "MATTER",
+      objectId: matter.id,
+      snapshot: {
+        matterNo: matter.matterNo,
+        title: matter.title,
+        type: matter.type,
+        status: matter.status,
+        ownerId: matter.ownerId,
+      },
+    });
+    return matter;
   }
 
   async list(query: ListBusinessMattersDto) {
@@ -176,19 +188,46 @@ export class BusinessMattersService {
       remark: dto.remark === undefined ? undefined : dto.remark?.trim() || null,
     };
 
-    return this.prisma.businessMatter.update({
+    const updated = await this.prisma.businessMatter.update({
       where: { id },
       data,
       include: this.listInclude(),
     });
+    await this.logActivity(id, user, BusinessActivityAction.MATTER_UPDATED, `更新事项“${updated.title}”`, {
+      objectType: "MATTER",
+      objectId: id,
+      changes: this.activityChanges([
+        ["事项名称", matter.title, updated.title],
+        ["类型", matter.type, updated.type],
+        ["状态", matter.status, updated.status],
+        ["上级事项", matter.parentId, updated.parentId],
+        ["负责人", matter.ownerId, updated.ownerId],
+        ["自定义负责人", matter.ownerName, updated.ownerName],
+        ["部门", matter.departmentId, updated.departmentId],
+        ["自定义部门", matter.departmentName, updated.departmentName],
+        ["合作单位", matter.partnerId, updated.partnerId],
+        ["自定义合作单位", matter.partnerName, updated.partnerName],
+        ["开始日期", matter.startDate, updated.startDate],
+        ["结束日期", matter.endDate, updated.endDate],
+        ["金额", matter.amount, updated.amount],
+        ["备注", matter.remark, updated.remark],
+      ]),
+    });
+    return updated;
   }
 
   async remove(id: string, user: PublicUser) {
-    await this.requireEditable(id, user);
-    return this.prisma.businessMatter.update({
+    const matter = await this.requireEditable(id, user);
+    const result = await this.prisma.businessMatter.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.logActivity(id, user, BusinessActivityAction.MATTER_DELETED, `删除事项“${matter.title}”`, {
+      objectType: "MATTER",
+      objectId: id,
+      snapshot: { matterNo: matter.matterNo, title: matter.title, ownerId: matter.ownerId },
+    });
+    return result;
   }
 
   async attachDocuments(id: string, dto: AttachBusinessMatterDocumentsDto, user: PublicUser) {
@@ -218,6 +257,11 @@ export class BusinessMattersService {
         isPrimary: dto.isPrimary ?? false,
       })),
     });
+    await this.logActivity(id, user, BusinessActivityAction.MATTER_UPDATED, `为事项关联 ${result.count} 份文件`, {
+      objectType: "MATTER_DOCUMENT_LINK",
+      objectId: id,
+      related: { documentCount: result.count },
+    });
     return { matterId: id, addedCount: result.count };
   }
 
@@ -229,9 +273,15 @@ export class BusinessMattersService {
     if (!link) {
       throw new NotFoundException("文件关联不存在");
     }
-    return this.prisma.businessMatterDocument.delete({
+    const result = await this.prisma.businessMatterDocument.delete({
       where: { matterId_documentId: { matterId: id, documentId } },
     });
+    await this.logActivity(id, user, BusinessActivityAction.MATTER_UPDATED, "取消事项文件关联", {
+      objectType: "MATTER_DOCUMENT_LINK",
+      objectId: id,
+      related: { documentId },
+    });
+    return result;
   }
 
   private async requireEditable(id: string, user: PublicUser) {
@@ -346,6 +396,34 @@ export class BusinessMattersService {
 
   private toDecimal(amount?: number | null) {
     return amount === undefined || amount === null ? amount : new Prisma.Decimal(amount);
+  }
+
+  private async logActivity(
+    matterId: string,
+    user: PublicUser,
+    action: BusinessActivityAction,
+    summary: string,
+    metadata: Record<string, unknown>,
+  ) {
+    await this.prisma.businessMatterActivity.create({
+      data: { matterId, actorId: user.id, action, summary, metadata: metadata as Prisma.InputJsonValue },
+    });
+  }
+
+  private activityValue(value: unknown): string | number | boolean | null {
+    if (value === undefined || value === null) return null;
+    if (value instanceof Date) return value.toISOString();
+    if (value instanceof Prisma.Decimal) return value.toString();
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+    return String(value);
+  }
+
+  private activityChanges(entries: Array<[string, unknown, unknown]>) {
+    return entries.flatMap(([field, before, after]) => {
+      const normalizedBefore = this.activityValue(before);
+      const normalizedAfter = this.activityValue(after);
+      return normalizedBefore === normalizedAfter ? [] : [{ field, before: normalizedBefore, after: normalizedAfter }];
+    });
   }
 
   private listInclude(): Prisma.BusinessMatterInclude {

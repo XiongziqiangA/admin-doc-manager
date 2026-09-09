@@ -20,6 +20,7 @@ import {
   UserStatus,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import type { Response } from "express";
 
 import { PublicUser } from "../users/user.presenter";
 import { BusinessMattersService } from "../business-matters/business-matters.service";
@@ -31,11 +32,22 @@ import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
 import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
+import { ResponsibilityReportDto } from "./dto/responsibility-report.dto";
 import { UpdateBusinessFinanceRecordDto } from "./dto/update-business-finance-record.dto";
 import { UpdateBusinessTaskDto } from "./dto/update-business-task.dto";
 import { UpsertBusinessContractDto } from "./dto/upsert-business-contract.dto";
 
 const personSelect = { id: true, username: true, realName: true } satisfies Prisma.UserSelect;
+
+type ActivityScalar = string | number | boolean | null;
+type ActivityChange = { field: string; before: ActivityScalar; after: ActivityScalar };
+type ActivityMetadata = {
+  objectType: string;
+  objectId: string;
+  changes?: ActivityChange[];
+  snapshot?: Record<string, ActivityScalar>;
+  related?: Record<string, ActivityScalar>;
+};
 
 @Injectable()
 export class BusinessWorkflowService {
@@ -105,7 +117,17 @@ export class BusinessWorkflowService {
       },
       include: this.taskInclude(),
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.TASK_CREATED, `创建跟进任务“${title}”`);
+    await this.logActivity(matterId, user, BusinessActivityAction.TASK_CREATED, `创建跟进任务“${title}”`, {
+      objectType: "TASK",
+      objectId: task.id,
+      snapshot: {
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+        assigneeId: task.assigneeId,
+        dueDate: this.activityValue(task.dueDate),
+      },
+    });
     return task;
   }
 
@@ -164,7 +186,20 @@ export class BusinessWorkflowService {
     const action = nextStatus === BusinessTaskStatus.COMPLETED && task.status !== BusinessTaskStatus.COMPLETED
       ? BusinessActivityAction.TASK_COMPLETED
       : BusinessActivityAction.TASK_UPDATED;
-    await this.logActivity(matterId, user, action, `更新跟进任务“${updated.title}”`);
+    await this.logActivity(matterId, user, action, `更新跟进任务“${updated.title}”`, {
+      objectType: "TASK",
+      objectId: updated.id,
+      changes: this.activityChanges([
+        ["任务标题", task.title, updated.title],
+        ["状态", task.status, updated.status],
+        ["优先级", task.priority, updated.priority],
+        ["进度", task.progress, updated.progress],
+        ["负责人", task.assigneeId, updated.assigneeId],
+        ["截止日期", task.dueDate, updated.dueDate],
+        ["完成说明", task.completionNote, updated.completionNote],
+        ["取消原因", task.cancellationReason, updated.cancellationReason],
+      ]),
+    });
     return updated;
   }
 
@@ -175,7 +210,11 @@ export class BusinessWorkflowService {
       where: { id: task.id },
       data: { deletedAt: new Date() },
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.TASK_DELETED, `删除跟进任务“${task.title}”`);
+    await this.logActivity(matterId, user, BusinessActivityAction.TASK_DELETED, `删除跟进任务“${task.title}”`, {
+      objectType: "TASK",
+      objectId: task.id,
+      snapshot: { title: task.title, status: task.status, assigneeId: task.assigneeId },
+    });
     return result;
   }
 
@@ -239,6 +278,15 @@ export class BusinessWorkflowService {
       user,
       BusinessActivityAction.FOLLOW_UP_CREATED,
       `记录一次${this.followUpMethodLabel(dto.method)}跟进`,
+      {
+        objectType: "FOLLOW_UP",
+        objectId: followUp.id,
+        snapshot: {
+          method: followUp.method,
+          nextAssigneeId: followUp.nextAssigneeId,
+          nextDueAt: this.activityValue(followUp.nextDueAt),
+        },
+      },
     );
     return followUp;
   }
@@ -258,7 +306,18 @@ export class BusinessWorkflowService {
     }
     const existing = await this.prisma.businessMatterContract.findUnique({
       where: { matterId },
-      select: { signedAt: true, effectiveAt: true, expiresAt: true },
+      select: {
+        id: true,
+        contractNo: true,
+        partyName: true,
+        signedAt: true,
+        effectiveAt: true,
+        expiresAt: true,
+        renewalNoticeDays: true,
+        amount: true,
+        status: true,
+        remark: true,
+      },
     });
     const signedAt = dto.signedAt === undefined ? existing?.signedAt : dto.signedAt;
     const effectiveAt = dto.effectiveAt === undefined ? existing?.effectiveAt : dto.effectiveAt;
@@ -294,7 +353,21 @@ export class BusinessWorkflowService {
       },
       include: { createdBy: { select: personSelect } },
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.CONTRACT_UPDATED, "更新合同信息");
+    await this.logActivity(matterId, user, BusinessActivityAction.CONTRACT_UPDATED, "更新合同信息", {
+      objectType: "CONTRACT",
+      objectId: contract.id,
+      changes: this.activityChanges([
+        ["合同编号", existing?.contractNo, contract.contractNo],
+        ["合同相对方", existing?.partyName, contract.partyName],
+        ["签署日期", existing?.signedAt, contract.signedAt],
+        ["生效日期", existing?.effectiveAt, contract.effectiveAt],
+        ["到期日期", existing?.expiresAt, contract.expiresAt],
+        ["提前提醒天数", existing?.renewalNoticeDays, contract.renewalNoticeDays],
+        ["合同金额", existing?.amount, contract.amount],
+        ["状态", existing?.status, contract.status],
+        ["备注", existing?.remark, contract.remark],
+      ]),
+    });
     return contract;
   }
 
@@ -305,7 +378,16 @@ export class BusinessWorkflowService {
       throw new NotFoundException("合同信息不存在");
     }
     const result = await this.prisma.businessMatterContract.delete({ where: { matterId } });
-    await this.logActivity(matterId, user, BusinessActivityAction.CONTRACT_DELETED, "删除合同信息");
+    await this.logActivity(matterId, user, BusinessActivityAction.CONTRACT_DELETED, "删除合同信息", {
+      objectType: "CONTRACT",
+      objectId: contract.id,
+      snapshot: {
+        contractNo: contract.contractNo,
+        partyName: contract.partyName,
+        status: contract.status,
+        amount: this.activityValue(contract.amount),
+      },
+    });
     return result;
   }
 
@@ -385,7 +467,22 @@ export class BusinessWorkflowService {
       },
       include: this.financeInclude(),
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_CREATED, `创建${this.financeKindLabel(dto.kind)}“${title}”`);
+    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_CREATED, `创建${this.financeKindLabel(dto.kind)}“${title}”`, {
+      objectType: "FINANCE_RECORD",
+      objectId: record.id,
+      snapshot: {
+        recordNo: record.recordNo,
+        kind: record.kind,
+        status: record.status,
+        title: record.title,
+        amount: this.activityValue(record.amount),
+        applicantId: record.applicantId,
+        handlerId: record.handlerId,
+        approverId: record.approverId,
+        payerId: record.payerId,
+        settlementOwnerId: record.settlementOwnerId,
+      },
+    });
     return record;
   }
 
@@ -449,7 +546,29 @@ export class BusinessWorkflowService {
       data,
       include: this.financeInclude(),
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_UPDATED, `更新${this.financeKindLabel(dto.kind ?? record.kind)}“${updated.title}”`);
+    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_UPDATED, `更新${this.financeKindLabel(dto.kind ?? record.kind)}“${updated.title}”`, {
+      objectType: "FINANCE_RECORD",
+      objectId: updated.id,
+      changes: this.activityChanges([
+        ["记录类型", record.kind, updated.kind],
+        ["标题", record.title, updated.title],
+        ["金额", record.amount, updated.amount],
+        ["币种", record.currency, updated.currency],
+        ["状态", record.status, updated.status],
+        ["申请人", record.applicantId, updated.applicantId],
+        ["经办负责人", record.handlerId, updated.handlerId],
+        ["审批负责人", record.approverId, updated.approverId],
+        ["付款负责人", record.payerId, updated.payerId],
+        ["结算负责人", record.settlementOwnerId, updated.settlementOwnerId],
+        ["应结日期", record.dueDate, updated.dueDate],
+        ["结清日期", record.settledAt, updated.settledAt],
+        ["拒绝原因", record.rejectionReason, updated.rejectionReason],
+        ["结算说明", record.settlementNote, updated.settlementNote],
+      ]),
+      related: {
+        recordNo: updated.recordNo,
+      },
+    });
     return updated;
   }
 
@@ -460,7 +579,18 @@ export class BusinessWorkflowService {
       where: { id: record.id },
       data: { deletedAt: new Date() },
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DELETED, `删除财务记录“${record.title}”`);
+    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DELETED, `删除财务记录“${record.title}”`, {
+      objectType: "FINANCE_RECORD",
+      objectId: record.id,
+      snapshot: {
+        recordNo: record.recordNo,
+        kind: record.kind,
+        status: record.status,
+        title: record.title,
+        amount: this.activityValue(record.amount),
+        handlerId: record.handlerId,
+      },
+    });
     return result;
   }
 
@@ -494,7 +624,11 @@ export class BusinessWorkflowService {
         relationType: this.optionalText(dto.relationType) ?? "VOUCHER",
       })),
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DOCUMENT_ATTACHED, `为财务记录关联 ${result.count} 份凭证`);
+    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DOCUMENT_ATTACHED, `为财务记录关联 ${result.count} 份凭证`, {
+      objectType: "FINANCE_DOCUMENT_LINK",
+      objectId: recordId,
+      related: { documentCount: result.count },
+    });
     return { recordId, addedCount: result.count };
   }
 
@@ -508,7 +642,11 @@ export class BusinessWorkflowService {
     const result = await this.prisma.businessMatterFinanceDocument.delete({
       where: { recordId_documentId: { recordId, documentId } },
     });
-    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DOCUMENT_DETACHED, "取消财务凭证关联");
+    await this.logActivity(matterId, user, BusinessActivityAction.FINANCE_DOCUMENT_DETACHED, "取消财务凭证关联", {
+      objectType: "FINANCE_DOCUMENT_LINK",
+      objectId: recordId,
+      related: { documentId },
+    });
     return result;
   }
 
@@ -652,6 +790,184 @@ export class BusinessWorkflowService {
     };
   }
 
+  async getResponsibilityReport(query: ResponsibilityReportDto) {
+    const dateRange = this.reportDateRange(query);
+    const now = new Date();
+    const [users, taskGroups, overdueTaskGroups, handledGroups, approvedGroups, paidGroups, settledGroups, createdFollowUpGroups, overdueFollowUpGroups] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { deletedAt: null, id: query.userId },
+        select: { id: true, username: true, realName: true },
+        orderBy: { realName: "asc" },
+      }),
+      this.prisma.businessMatterTask.groupBy({
+        by: ["assigneeId", "status"],
+        where: { deletedAt: null, assigneeId: { not: null }, matter: { deletedAt: null }, ...(dateRange ? { createdAt: dateRange } : {}) },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterTask.groupBy({
+        by: ["assigneeId"],
+        where: {
+          deletedAt: null,
+          assigneeId: { not: null },
+          status: { in: [BusinessTaskStatus.TODO, BusinessTaskStatus.IN_PROGRESS] },
+          dueDate: { lt: now, ...(dateRange ?? {}) },
+          matter: { deletedAt: null },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFinanceRecord.groupBy({
+        by: ["handlerId", "kind"],
+        where: { deletedAt: null, handlerId: { not: null }, matter: { deletedAt: null }, ...(dateRange ? { createdAt: dateRange } : {}) },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFinanceRecord.groupBy({
+        by: ["approvedById"],
+        where: { deletedAt: null, approvedById: { not: null }, approvedAt: dateRange ?? { not: null }, matter: { deletedAt: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFinanceRecord.groupBy({
+        by: ["paidById"],
+        where: { deletedAt: null, paidById: { not: null }, paidAt: dateRange ?? { not: null }, matter: { deletedAt: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFinanceRecord.groupBy({
+        by: ["settlementOwnerId"],
+        where: {
+          deletedAt: null,
+          settlementOwnerId: { not: null },
+          status: BusinessFinanceStatus.SETTLED,
+          settledAt: dateRange ?? { not: null },
+          matter: { deletedAt: null },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFollowUp.groupBy({
+        by: ["createdById"],
+        where: { deletedAt: null, matter: { deletedAt: null }, ...(dateRange ? { createdAt: dateRange } : {}) },
+        _count: { _all: true },
+      }),
+      this.prisma.businessMatterFollowUp.groupBy({
+        by: ["nextAssigneeId"],
+        where: {
+          deletedAt: null,
+          nextAssigneeId: { not: null },
+          nextDueAt: { lt: now, ...(dateRange ?? {}) },
+          matter: { deletedAt: null },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const items = users.map((person) => ({
+      userId: person.id,
+      username: person.username,
+      realName: person.realName,
+      tasks: { pending: 0, completed: 0, overdue: 0 },
+      finance: { loansHandled: 0, reimbursementsHandled: 0, approved: 0, paid: 0, settled: 0 },
+      followUps: { created: 0, overdue: 0 },
+    }));
+    const rows = new Map(items.map((item) => [item.userId, item]));
+    const count = (value: { _count?: unknown }) => {
+      if (value._count && typeof value._count === "object" && "_all" in value._count) {
+        return (value._count as { _all?: number })._all ?? 0;
+      }
+      return 0;
+    };
+
+    for (const group of taskGroups) {
+      const row = group.assigneeId ? rows.get(group.assigneeId) : undefined;
+      if (!row) continue;
+      if (group.status === BusinessTaskStatus.COMPLETED) row.tasks.completed += count(group);
+      if (group.status === BusinessTaskStatus.TODO || group.status === BusinessTaskStatus.IN_PROGRESS) row.tasks.pending += count(group);
+    }
+    for (const group of overdueTaskGroups) {
+      const row = group.assigneeId ? rows.get(group.assigneeId) : undefined;
+      if (row) row.tasks.overdue += count(group);
+    }
+    for (const group of handledGroups) {
+      const row = group.handlerId ? rows.get(group.handlerId) : undefined;
+      if (!row) continue;
+      if (group.kind === BusinessFinanceKind.LOAN) row.finance.loansHandled += count(group);
+      if (group.kind === BusinessFinanceKind.REIMBURSEMENT) row.finance.reimbursementsHandled += count(group);
+    }
+    for (const group of approvedGroups) {
+      const row = group.approvedById ? rows.get(group.approvedById) : undefined;
+      if (row) row.finance.approved += count(group);
+    }
+    for (const group of paidGroups) {
+      const row = group.paidById ? rows.get(group.paidById) : undefined;
+      if (row) row.finance.paid += count(group);
+    }
+    for (const group of settledGroups) {
+      const row = group.settlementOwnerId ? rows.get(group.settlementOwnerId) : undefined;
+      if (row) row.finance.settled += count(group);
+    }
+    for (const group of createdFollowUpGroups) {
+      const row = rows.get(group.createdById);
+      if (row) row.followUps.created += count(group);
+    }
+    for (const group of overdueFollowUpGroups) {
+      const row = group.nextAssigneeId ? rows.get(group.nextAssigneeId) : undefined;
+      if (row) row.followUps.overdue += count(group);
+    }
+
+    return {
+      generatedAt: now,
+      filters: { dateFrom: query.dateFrom ?? null, dateTo: query.dateTo ?? null, userId: query.userId ?? null },
+      items,
+    };
+  }
+
+  async exportResponsibilityReport(query: ResponsibilityReportDto, response: Response) {
+    const report = await this.getResponsibilityReport(query);
+    const headers = ["员工", "账号", "待处理任务", "已完成任务", "逾期任务", "借款经办", "报销经办", "审批数", "付款数", "结算数", "人工跟进", "逾期跟进"];
+    const rows = report.items.map((item) => [
+      item.realName,
+      item.username,
+      item.tasks.pending,
+      item.tasks.completed,
+      item.tasks.overdue,
+      item.finance.loansHandled,
+      item.finance.reimbursementsHandled,
+      item.finance.approved,
+      item.finance.paid,
+      item.finance.settled,
+      item.followUps.created,
+      item.followUps.overdue,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map((value) => this.csvValue(value)).join(",")).join("\r\n");
+    response.setHeader("Content-Type", "text/csv; charset=utf-8");
+    response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''responsibility-report.csv");
+    return response.send(`\uFEFF${csv}`);
+  }
+
+  private reportDateRange(query: ResponsibilityReportDto) {
+    const from = query.dateFrom ? this.parseReportDate(query.dateFrom, "统计开始日期", false) : undefined;
+    const to = query.dateTo ? this.parseReportDate(query.dateTo, "统计结束日期", true) : undefined;
+    if (from && to && from > to) {
+      throw new BadRequestException("统计开始日期不能晚于结束日期");
+    }
+    if (!from && !to) return undefined;
+    return { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
+  }
+
+  private parseReportDate(value: string, label: string, endOfDay: boolean) {
+    const normalized = value.length === 10
+      ? `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`
+      : value;
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`${label}格式无效`);
+    }
+    return date;
+  }
+
+  private csvValue(value: unknown) {
+    const text = String(value ?? "");
+    const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${protectedText.replaceAll('"', '""')}"`;
+  }
+
   private async requireTask(matterId: string, taskId: string) {
     const task = await this.prisma.businessMatterTask.findFirst({ where: { id: taskId, matterId, deletedAt: null } });
     if (!task) {
@@ -788,8 +1104,48 @@ export class BusinessWorkflowService {
     return status === BusinessFinanceStatus.DRAFT || status === BusinessFinanceStatus.PENDING;
   }
 
-  private async logActivity(matterId: string, user: PublicUser, action: BusinessActivityAction, summary: string) {
-    await this.prisma.businessMatterActivity.create({ data: { matterId, actorId: user.id, action, summary } });
+  private async logActivity(
+    matterId: string,
+    user: PublicUser,
+    action: BusinessActivityAction,
+    summary: string,
+    metadata?: ActivityMetadata,
+  ) {
+    await this.prisma.businessMatterActivity.create({
+      data: {
+        matterId,
+        actorId: user.id,
+        action,
+        summary,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
+
+  private activityValue(value: unknown): ActivityScalar {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (value instanceof Prisma.Decimal) {
+      return value.toString();
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    return String(value);
+  }
+
+  private activityChanges(entries: Array<[string, unknown, unknown]>): ActivityChange[] {
+    return entries.flatMap(([field, before, after]) => {
+      const normalizedBefore = this.activityValue(before);
+      const normalizedAfter = this.activityValue(after);
+      return normalizedBefore === normalizedAfter
+        ? []
+        : [{ field, before: normalizedBefore, after: normalizedAfter }];
+    });
   }
 
   private taskInclude(): Prisma.BusinessMatterTaskInclude {

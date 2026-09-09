@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { UserRole } from "@prisma/client";
+import type { Response } from "express";
 
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -13,9 +15,11 @@ import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessActivitiesDto } from "./dto/list-business-activities.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
+import { ResponsibilityReportDto } from "./dto/responsibility-report.dto";
 import { UpdateBusinessFinanceRecordDto } from "./dto/update-business-finance-record.dto";
 import { UpdateBusinessTaskDto } from "./dto/update-business-task.dto";
 import { UpsertBusinessContractDto } from "./dto/upsert-business-contract.dto";
+import { Roles } from "../auth/roles.decorator";
 import { BusinessWorkflowService } from "./business-workflow.service";
 
 @ApiTags("business-workflow")
@@ -33,6 +37,18 @@ export class BusinessWorkflowController {
   @Get("business-workflow/reminders")
   reminders(@CurrentUser() user: PublicUser) {
     return this.workflow.listReminders(user);
+  }
+
+  @Get("business-workflow/responsibility-report")
+  @Roles(UserRole.ADMIN)
+  responsibilityReport(@Query() query: ResponsibilityReportDto) {
+    return this.workflow.getResponsibilityReport(query);
+  }
+
+  @Get("business-workflow/responsibility-report/export")
+  @Roles(UserRole.ADMIN)
+  exportResponsibilityReport(@Query() query: ResponsibilityReportDto, @Res() response: Response) {
+    return this.workflow.exportResponsibilityReport(query, response);
   }
 
   @Get("business-matters/:matterId/tasks")

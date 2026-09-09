@@ -19,6 +19,9 @@ describe("BusinessMattersService", () => {
       createMany: vi.fn(),
       delete: vi.fn(),
     },
+    businessMatterActivity: {
+      create: vi.fn(),
+    },
     document: {
       findMany: vi.fn(),
     },
@@ -52,6 +55,8 @@ describe("BusinessMattersService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new BusinessMattersService(prisma as unknown as PrismaService);
+    prisma.businessMatterActivity.create.mockResolvedValue({ id: "activity-1" });
+    prisma.businessMatter.update.mockResolvedValue({ id: "matter-1", title: "更新后的事项" });
   });
 
   it("creates a matter with a generated number and defaults the owner to the creator", async () => {

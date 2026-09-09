@@ -12,6 +12,7 @@ import type {
   BusinessFinanceDocumentLink,
   BusinessFinanceRecord,
   BusinessReminder,
+  BusinessResponsibilityReport,
   BusinessTaskRecord,
   BusinessWorkflowOverview,
   CategoryNode,
@@ -256,6 +257,21 @@ export async function listBusinessActivities(matterId: string, params: { page?: 
 
 export async function getBusinessWorkflowOverview() {
   return request<BusinessWorkflowOverview>({ method: "GET", url: "/business-workflow/overview" });
+}
+
+export async function getBusinessResponsibilityReport(params: { dateFrom?: string; dateTo?: string; userId?: string } = {}) {
+  return request<BusinessResponsibilityReport>({ method: "GET", url: "/business-workflow/responsibility-report", params });
+}
+
+export async function exportBusinessResponsibilityReport(params: { dateFrom?: string; dateTo?: string; userId?: string } = {}) {
+  const response = await api.get<Blob>("/business-workflow/responsibility-report/export", {
+    params,
+    responseType: "blob",
+  });
+  return {
+    blob: response.data,
+    fileName: parseContentDispositionFileName(response.headers["content-disposition"]) ?? "责任统计报表.csv",
+  };
 }
 
 export async function listBusinessReminders() {

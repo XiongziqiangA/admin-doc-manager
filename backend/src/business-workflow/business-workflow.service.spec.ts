@@ -24,11 +24,13 @@ describe("BusinessWorkflowService", () => {
       count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      groupBy: vi.fn(),
     },
     businessMatterFollowUp: {
       findMany: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
+      groupBy: vi.fn(),
     },
     businessMatterContract: {
       findUnique: vi.fn(),
@@ -44,6 +46,7 @@ describe("BusinessWorkflowService", () => {
       create: vi.fn(),
       update: vi.fn(),
       aggregate: vi.fn(),
+      groupBy: vi.fn(),
     },
     businessMatterFinanceDocument: {
       findMany: vi.fn(),
@@ -64,6 +67,7 @@ describe("BusinessWorkflowService", () => {
     },
     user: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     $transaction: vi.fn((operations: Promise<unknown>[]) => Promise.all(operations)),
   };
@@ -245,6 +249,36 @@ describe("BusinessWorkflowService", () => {
     ]);
   });
 
+  it("aggregates responsibility metrics by employee and business role", async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: "user-1", username: "employee", realName: "员工" }]);
+    prisma.businessMatterTask.groupBy
+      .mockResolvedValueOnce([
+        { assigneeId: "user-1", status: BusinessTaskStatus.TODO, _count: { _all: 2 } },
+        { assigneeId: "user-1", status: BusinessTaskStatus.COMPLETED, _count: { _all: 3 } },
+      ])
+      .mockResolvedValueOnce([{ assigneeId: "user-1", _count: { _all: 1 } }]);
+    prisma.businessMatterFinanceRecord.groupBy
+      .mockResolvedValueOnce([
+        { handlerId: "user-1", kind: BusinessFinanceKind.LOAN, _count: { _all: 4 } },
+        { handlerId: "user-1", kind: BusinessFinanceKind.REIMBURSEMENT, _count: { _all: 5 } },
+      ])
+      .mockResolvedValueOnce([{ approvedById: "user-1", _count: { _all: 2 } }])
+      .mockResolvedValueOnce([{ paidById: "user-1", _count: { _all: 1 } }])
+      .mockResolvedValueOnce([{ settlementOwnerId: "user-1", _count: { _all: 1 } }]);
+    prisma.businessMatterFollowUp.groupBy
+      .mockResolvedValueOnce([{ createdById: "user-1", _count: { _all: 6 } }])
+      .mockResolvedValueOnce([{ nextAssigneeId: "user-1", _count: { _all: 2 } }]);
+
+    const report = await service.getResponsibilityReport({});
+
+    expect(report.items[0]).toMatchObject({
+      userId: "user-1",
+      tasks: { pending: 2, completed: 3, overdue: 1 },
+      finance: { loansHandled: 4, reimbursementsHandled: 5, approved: 2, paid: 1, settled: 1 },
+      followUps: { created: 6, overdue: 2 },
+    });
+  });
+
   it("sets completion time when a task is completed", async () => {
     prisma.businessMatterTask.findFirst.mockResolvedValue({
       id: "task-1",
@@ -407,6 +441,62 @@ describe("BusinessWorkflowService", () => {
           status: BusinessFinanceStatus.APPROVED,
           approvedAt: expect.any(Date),
           approvedBy: { connect: { id: user.id } },
+        }),
+      }),
+    );
+  });
+
+  it("records before-and-after responsibility values in the activity metadata", async () => {
+    const admin = { ...user, role: UserRole.ADMIN };
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      recordNo: "REIM-1",
+      title: "办公用品报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.PENDING,
+      applicantId: user.id,
+      handlerId: user.id,
+      approverId: user.id,
+      payerId: null,
+      settlementOwnerId: null,
+      amount: "1280.00",
+      currency: "CNY",
+      dueDate: null,
+      settledAt: null,
+      rejectionReason: null,
+      settlementNote: null,
+    });
+    prisma.businessMatterFinanceRecord.update.mockResolvedValue({
+      id: "finance-1",
+      recordNo: "REIM-1",
+      title: "办公用品报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.PENDING,
+      applicantId: user.id,
+      handlerId: user.id,
+      approverId: "user-2",
+      payerId: null,
+      settlementOwnerId: null,
+      amount: "1280.00",
+      currency: "CNY",
+      dueDate: null,
+      settledAt: null,
+      rejectionReason: null,
+      settlementNote: null,
+    });
+
+    await service.updateFinanceRecord("matter-1", "finance-1", { approverId: "user-2" }, admin);
+
+    expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            objectType: "FINANCE_RECORD",
+            objectId: "finance-1",
+            changes: expect.arrayContaining([
+              { field: "审批负责人", before: user.id, after: "user-2" },
+            ]),
+          }),
         }),
       }),
     );
