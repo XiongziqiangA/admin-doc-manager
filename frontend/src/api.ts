@@ -3,6 +3,9 @@ import axios, { AxiosRequestConfig } from "axios";
 import type {
   ApiEnvelope,
   ApiList,
+  BusinessMatterDetail,
+  BusinessMatterDocumentLink,
+  BusinessMatterRecord,
   CategoryNode,
   DepartmentRecord,
   DocumentListQuery,
@@ -107,6 +110,48 @@ export async function listDocuments(query: DocumentListQuery, recycle = false) {
     method: "GET",
     url: recycle ? "/documents/recycle" : "/documents",
     params: query,
+  });
+}
+
+export async function listBusinessMatters(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<BusinessMatterRecord>>({
+    method: "GET",
+    url: "/business-matters",
+    params: { page: 1, pageSize: 20, ...params },
+  });
+}
+
+export async function getBusinessMatter(id: string) {
+  return request<BusinessMatterDetail>({ method: "GET", url: `/business-matters/${id}` });
+}
+
+export async function createBusinessMatter(payload: Record<string, unknown>) {
+  return request<BusinessMatterRecord>({ method: "POST", url: "/business-matters", data: payload });
+}
+
+export async function updateBusinessMatter(id: string, payload: Record<string, unknown>) {
+  return request<BusinessMatterRecord>({ method: "PATCH", url: `/business-matters/${id}`, data: payload });
+}
+
+export async function deleteBusinessMatter(id: string) {
+  return request<BusinessMatterRecord>({ method: "DELETE", url: `/business-matters/${id}` });
+}
+
+export async function attachBusinessMatterDocuments(
+  id: string,
+  payload: { documentIds: string[]; relationType?: string; isPrimary?: boolean },
+) {
+  return request<{ matterId: string; addedCount: number }>({
+    method: "POST",
+    url: `/business-matters/${id}/documents`,
+    data: payload,
+  });
+}
+
+export async function detachBusinessMatterDocument(id: string, documentId: string) {
+  return request<BusinessMatterDocumentLink>({
+    method: "DELETE",
+    url: `/business-matters/${id}/documents/${documentId}`,
   });
 }
 

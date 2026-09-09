@@ -16,6 +16,9 @@ export type FinanceMaterialType =
   | "BANK_RECEIPT"
   | "OTHER";
 
+export type BusinessMatterType = "PROJECT" | "CONTRACT" | "REIMBURSEMENT" | "LOAN" | "PROCUREMENT" | "OTHER";
+export type BusinessMatterStatus = "PLANNING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+
 export interface FinanceAiConfig {
   enabled: boolean;
   configured: boolean;
@@ -207,6 +210,62 @@ export interface DocumentListQuery {
   status?: DocumentStatus;
   sortBy?: "createdAt" | "updatedAt" | "title" | "documentNo";
   sortOrder?: "asc" | "desc";
+}
+
+export interface BusinessMatterPerson {
+  id: string;
+  username: string;
+  realName: string;
+}
+
+export interface BusinessMatterSummary {
+  id: string;
+  matterNo: string;
+  title: string;
+  type: BusinessMatterType;
+  status: BusinessMatterStatus;
+  parentId?: string | null;
+  updatedAt?: string;
+}
+
+export interface BusinessMatterRecord extends BusinessMatterSummary {
+  ownerId: string;
+  createdById: string;
+  departmentId: string | null;
+  partnerId: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  amount: string | null;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  parent?: BusinessMatterSummary | null;
+  owner?: BusinessMatterPerson;
+  createdBy?: BusinessMatterPerson;
+  department?: { id: string; name: string } | null;
+  partner?: { id: string; companyName: string } | null;
+  _count?: { documents: number; children: number };
+}
+
+export interface BusinessMatterChild extends BusinessMatterSummary {
+  parentId: string | null;
+}
+
+export interface BusinessMatterDocumentLink {
+  matterId: string;
+  documentId: string;
+  versionId: string | null;
+  relationType: string;
+  isPrimary: boolean;
+  createdAt: string;
+  document: DocumentRecord;
+  version?: DocumentVersionRecord | null;
+}
+
+export interface BusinessMatterDetail extends BusinessMatterRecord {
+  children: BusinessMatterChild[];
+  documents: BusinessMatterDocumentLink[];
 }
 
 export interface ExportDocumentsPayload {
