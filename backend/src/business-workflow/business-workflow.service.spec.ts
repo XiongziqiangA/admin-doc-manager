@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import {
   BusinessContractStatus,
   BusinessFinanceKind,
@@ -130,18 +130,72 @@ describe("BusinessWorkflowService", () => {
     prisma.businessMatterTask.findFirst.mockResolvedValue({
       id: "task-1",
       title: "准备材料",
-      status: BusinessTaskStatus.TODO,
+      status: BusinessTaskStatus.IN_PROGRESS,
+      assigneeId: user.id,
       completedAt: null,
     });
     prisma.businessMatterTask.update.mockResolvedValue({ id: "task-1", title: "准备材料", status: BusinessTaskStatus.COMPLETED });
 
-    await service.updateTask("matter-1", "task-1", { status: BusinessTaskStatus.COMPLETED }, user);
+    await service.updateTask("matter-1", "task-1", {
+      status: BusinessTaskStatus.COMPLETED,
+      completionNote: "已完成材料整理",
+    }, user);
 
     expect(prisma.businessMatterTask.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ completedAt: expect.any(Date) }) }),
     );
     expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "TASK_COMPLETED" }) }),
+    );
+  });
+
+  it("requires the assigned person or an admin to complete a task", async () => {
+    prisma.businessMatterTask.findFirst.mockResolvedValue({
+      id: "task-1",
+      title: "准备材料",
+      status: BusinessTaskStatus.IN_PROGRESS,
+      progress: 40,
+      assigneeId: "another-user",
+      completedAt: null,
+    });
+
+    await expect(
+      service.updateTask("matter-1", "task-1", {
+        status: BusinessTaskStatus.COMPLETED,
+        completionNote: "已完成材料整理",
+      }, user),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.businessMatterTask.update).not.toHaveBeenCalled();
+  });
+
+  it("requires a completion note and records the completion owner", async () => {
+    prisma.businessMatterTask.findFirst.mockResolvedValue({
+      id: "task-1",
+      title: "准备材料",
+      status: BusinessTaskStatus.IN_PROGRESS,
+      progress: 40,
+      assigneeId: user.id,
+      completedAt: null,
+    });
+
+    await expect(
+      service.updateTask("matter-1", "task-1", { status: BusinessTaskStatus.COMPLETED }, user),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    prisma.businessMatterTask.update.mockResolvedValue({ id: "task-1", title: "准备材料", status: BusinessTaskStatus.COMPLETED });
+    await service.updateTask("matter-1", "task-1", {
+      status: BusinessTaskStatus.COMPLETED,
+      completionNote: "已完成材料整理",
+    }, user);
+
+    expect(prisma.businessMatterTask.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          progress: 100,
+          completedBy: { connect: { id: user.id } },
+          completionNote: "已完成材料整理",
+        }),
+      }),
     );
   });
 
@@ -200,9 +254,73 @@ describe("BusinessWorkflowService", () => {
           kind: BusinessFinanceKind.LOAN,
           amount: expect.anything(),
           currency: "CNY",
+          applicantId: user.id,
+          handlerId: user.id,
         }),
       }),
     );
+  });
+
+  it("records the responsible people and timestamps when finance status advances", async () => {
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      title: "项目备用金",
+      kind: BusinessFinanceKind.LOAN,
+      status: BusinessFinanceStatus.PENDING,
+      approverId: user.id,
+      payerId: user.id,
+      settlementOwnerId: user.id,
+      settledAt: null,
+    });
+    prisma.businessMatterFinanceRecord.update.mockResolvedValue({
+      id: "finance-1",
+      title: "项目备用金",
+      status: BusinessFinanceStatus.APPROVED,
+    });
+
+    await service.updateFinanceRecord("matter-1", "finance-1", {
+      status: BusinessFinanceStatus.APPROVED,
+    }, user);
+
+    expect(prisma.businessMatterFinanceRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: BusinessFinanceStatus.APPROVED,
+          approvedAt: expect.any(Date),
+          approvedBy: { connect: { id: user.id } },
+        }),
+      }),
+    );
+  });
+
+  it("does not allow approving finance records without an assigned approver", async () => {
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      title: "报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.PENDING,
+      approverId: null,
+    });
+
+    await expect(
+      service.updateFinanceRecord("matter-1", "finance-1", { status: BusinessFinanceStatus.APPROVED }, user),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterFinanceRecord.update).not.toHaveBeenCalled();
+  });
+
+  it("requires a rejection reason when a finance record is rejected", async () => {
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      title: "报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.PENDING,
+      approverId: user.id,
+    });
+
+    await expect(
+      service.updateFinanceRecord("matter-1", "finance-1", { status: BusinessFinanceStatus.REJECTED }, user),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterFinanceRecord.update).not.toHaveBeenCalled();
   });
 
   it("attaches current document versions and rejects duplicate vouchers", async () => {

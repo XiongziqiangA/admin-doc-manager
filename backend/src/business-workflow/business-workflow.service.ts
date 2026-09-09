@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -15,6 +16,7 @@ import {
   BusinessTaskPriority,
   DocumentStatus,
   Prisma,
+  UserRole,
   UserStatus,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
@@ -72,9 +74,15 @@ export class BusinessWorkflowService {
   async createTask(matterId: string, dto: CreateBusinessTaskDto, user: PublicUser) {
     const matter = await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const assigneeId = dto.assigneeId ?? matter.ownerId;
-    await this.ensureActiveUser(assigneeId);
+    await this.ensureResponsibleUser(assigneeId, user, "任务负责人");
     const title = this.normalizeText(dto.title, "任务标题不能为空");
-    const status = dto.status ?? BusinessTaskStatus.TODO;
+    const status: BusinessTaskStatus = dto.status === undefined ? BusinessTaskStatus.TODO : dto.status;
+    if (!this.isInitialTaskStatus(status)) {
+      throw new BadRequestException("新建任务只能处于待处理或进行中状态");
+    }
+    const completionNote = this.optionalText(dto.completionNote);
+    const cancellationReason = this.optionalText(dto.cancellationReason);
+    this.validateTaskOutcome(status, completionNote, cancellationReason);
     const task = await this.prisma.businessMatterTask.create({
       data: {
         matterId,
@@ -82,8 +90,14 @@ export class BusinessWorkflowService {
         description: this.optionalText(dto.description),
         status,
         priority: dto.priority ?? BusinessTaskPriority.NORMAL,
+        progress: dto.progress ?? 0,
         dueDate: this.toDate(dto.dueDate),
-        completedAt: status === BusinessTaskStatus.COMPLETED ? new Date() : null,
+        startedAt: status === BusinessTaskStatus.IN_PROGRESS ? new Date() : null,
+        completedAt: null,
+        completedById: null,
+        completionNote,
+        cancelledById: null,
+        cancellationReason,
         assigneeId,
         createdById: user.id,
       },
@@ -97,15 +111,38 @@ export class BusinessWorkflowService {
     await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const task = await this.requireTask(matterId, taskId);
     if (dto.assigneeId !== undefined && dto.assigneeId !== null) {
+      if (user.role !== UserRole.ADMIN) {
+        throw new ForbiddenException("只有管理员可以调整任务负责人");
+      }
       await this.ensureActiveUser(dto.assigneeId);
     }
     const nextStatus = dto.status ?? task.status;
+    this.validateTaskStatusTransition(task.status, nextStatus);
+    const completionNote = dto.completionNote === undefined ? task.completionNote : this.optionalText(dto.completionNote);
+    const cancellationReason = dto.cancellationReason === undefined ? task.cancellationReason : this.optionalText(dto.cancellationReason);
+    if (nextStatus === BusinessTaskStatus.COMPLETED && task.status !== BusinessTaskStatus.COMPLETED) {
+      this.requireTaskActor(task, user);
+    }
+    if (nextStatus === BusinessTaskStatus.CANCELLED && task.status !== BusinessTaskStatus.CANCELLED) {
+      this.requireTaskActor(task, user);
+    }
+    this.validateTaskOutcome(nextStatus, completionNote, cancellationReason, task.status);
     const data: Prisma.BusinessMatterTaskUpdateInput = {
       title: dto.title === undefined ? undefined : this.normalizeText(dto.title, "任务标题不能为空"),
       description: dto.description === undefined ? undefined : this.optionalText(dto.description),
       priority: dto.priority,
       status: dto.status,
+      progress: nextStatus === BusinessTaskStatus.COMPLETED ? 100 : dto.progress,
       dueDate: dto.dueDate === undefined ? undefined : this.toDate(dto.dueDate),
+      startedAt: nextStatus === BusinessTaskStatus.IN_PROGRESS && !task.startedAt ? new Date() : undefined,
+      completionNote: dto.completionNote === undefined ? undefined : completionNote,
+      cancellationReason: dto.cancellationReason === undefined ? undefined : cancellationReason,
+      completedBy: nextStatus === BusinessTaskStatus.COMPLETED && task.status !== BusinessTaskStatus.COMPLETED
+        ? { connect: { id: user.id } }
+        : undefined,
+      cancelledBy: nextStatus === BusinessTaskStatus.CANCELLED && task.status !== BusinessTaskStatus.CANCELLED
+        ? { connect: { id: user.id } }
+        : undefined,
       assignee: dto.assigneeId === undefined
         ? undefined
         : dto.assigneeId === null
@@ -246,20 +283,38 @@ export class BusinessWorkflowService {
   async createFinanceRecord(matterId: string, dto: CreateBusinessFinanceRecordDto, user: PublicUser) {
     await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const title = this.normalizeText(dto.title, "财务记录标题不能为空");
+    const status: BusinessFinanceStatus = dto.status === undefined ? BusinessFinanceStatus.DRAFT : dto.status;
+    if (!this.isInitialFinanceStatus(status)) {
+      throw new BadRequestException("新建财务记录只能处于草稿或待处理状态");
+    }
+    const applicantId = dto.applicantId ?? user.id;
+    const handlerId = dto.handlerId ?? user.id;
+    await this.ensureResponsibleUser(applicantId, user, "申请人");
+    await this.ensureResponsibleUser(handlerId, user, "经办负责人");
+    await this.ensureOptionalResponsibleUser(dto.approverId, "审批负责人");
+    await this.ensureOptionalResponsibleUser(dto.payerId, "付款负责人");
+    await this.ensureOptionalResponsibleUser(dto.settlementOwnerId, "结算负责人");
     const record = await this.prisma.businessMatterFinanceRecord.create({
       data: {
         matterId,
         recordNo: this.normalizeRecordNo(dto.recordNo) ?? this.generateRecordNo(dto.kind),
         kind: dto.kind,
-        status: dto.status ?? BusinessFinanceStatus.DRAFT,
+        status,
         title,
         amount: this.requireAmount(dto.amount),
         currency: this.normalizeCurrency(dto.currency),
+        applicantId,
+        handlerId,
+        approverId: dto.approverId ?? null,
+        payerId: dto.payerId ?? null,
+        settlementOwnerId: dto.settlementOwnerId ?? null,
         occurredAt: this.toDate(dto.occurredAt),
         counterparty: this.optionalText(dto.counterparty),
         dueDate: this.toDate(dto.dueDate),
         settledAt: this.toDate(dto.settledAt),
         remark: this.optionalText(dto.remark),
+        rejectionReason: this.optionalText(dto.rejectionReason),
+        settlementNote: this.optionalText(dto.settlementNote),
         createdById: user.id,
       },
       include: this.financeInclude(),
@@ -271,6 +326,9 @@ export class BusinessWorkflowService {
   async updateFinanceRecord(matterId: string, recordId: string, dto: UpdateBusinessFinanceRecordDto, user: PublicUser) {
     await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const record = await this.requireFinanceRecord(matterId, recordId);
+    const nextStatus = dto.status ?? record.status;
+    this.validateFinanceStatusTransition(record.status, nextStatus);
+    const responsibilityData = await this.buildFinanceResponsibilityData(dto, user);
     const data: Prisma.BusinessMatterFinanceRecordUpdateInput = {
       kind: dto.kind,
       title: dto.title === undefined ? undefined : this.normalizeText(dto.title, "财务记录标题不能为空"),
@@ -282,8 +340,38 @@ export class BusinessWorkflowService {
       status: dto.status,
       settledAt: dto.settledAt === undefined ? undefined : this.toDate(dto.settledAt),
       remark: dto.remark === undefined ? undefined : this.optionalText(dto.remark),
+      rejectionReason: dto.rejectionReason === undefined ? undefined : this.optionalText(dto.rejectionReason),
+      settlementNote: dto.settlementNote === undefined ? undefined : this.optionalText(dto.settlementNote),
+      ...responsibilityData,
     };
-    const nextStatus = dto.status ?? record.status;
+    if (nextStatus !== record.status && nextStatus === BusinessFinanceStatus.APPROVED) {
+      this.requireFinanceActor({ ...record, approverId: dto.approverId === undefined ? record.approverId : dto.approverId }, "approverId", user, "审批负责人");
+      data.approvedAt = new Date();
+      data.approvedBy = { connect: { id: user.id } };
+    }
+    if (nextStatus !== record.status && nextStatus === BusinessFinanceStatus.PAID) {
+      this.requireFinanceActor({ ...record, payerId: dto.payerId === undefined ? record.payerId : dto.payerId }, "payerId", user, "付款负责人");
+      data.paidAt = new Date();
+      data.paidBy = { connect: { id: user.id } };
+    }
+    if (nextStatus !== record.status && nextStatus === BusinessFinanceStatus.REJECTED) {
+      this.requireFinanceActor({ ...record, approverId: dto.approverId === undefined ? record.approverId : dto.approverId }, "approverId", user, "审批负责人");
+      const rejectionReason = this.optionalText(dto.rejectionReason);
+      if (!rejectionReason) {
+        throw new BadRequestException("拒绝财务记录时必须填写拒绝原因");
+      }
+      data.rejectionReason = rejectionReason;
+      data.rejectedAt = new Date();
+      data.rejectedBy = { connect: { id: user.id } };
+    }
+    if (nextStatus !== record.status && nextStatus === BusinessFinanceStatus.SETTLED) {
+      this.requireFinanceActor({ ...record, settlementOwnerId: dto.settlementOwnerId === undefined ? record.settlementOwnerId : dto.settlementOwnerId }, "settlementOwnerId", user, "结算负责人");
+      const settlementNote = this.optionalText(dto.settlementNote);
+      if (!settlementNote) {
+        throw new BadRequestException("结清财务记录时必须填写结算说明");
+      }
+      data.settlementNote = settlementNote;
+    }
     if (dto.status === BusinessFinanceStatus.SETTLED && dto.settledAt === undefined && !record.settledAt) {
       data.settledAt = new Date();
     }
@@ -492,6 +580,119 @@ export class BusinessWorkflowService {
     }
   }
 
+  private async ensureResponsibleUser(userId: string, user: PublicUser, label: string) {
+    if (user.role !== UserRole.ADMIN && userId !== user.id) {
+      throw new ForbiddenException(`普通员工不能指定其他人的${label}`);
+    }
+    await this.ensureActiveUser(userId);
+  }
+
+  private async ensureOptionalResponsibleUser(userId: string | null | undefined, label: string) {
+    if (userId) {
+      await this.ensureActiveUser(userId);
+    }
+  }
+
+  private async buildFinanceResponsibilityData(dto: UpdateBusinessFinanceRecordDto, user: PublicUser) {
+    const data: Prisma.BusinessMatterFinanceRecordUpdateInput = {};
+    const fields = [
+      ["applicantId", "applicant", "申请人"],
+      ["handlerId", "handler", "经办负责人"],
+      ["approverId", "approver", "审批负责人"],
+      ["payerId", "payer", "付款负责人"],
+      ["settlementOwnerId", "settlementOwner", "结算负责人"],
+    ] as const;
+    for (const [field, relation, label] of fields) {
+      const value = dto[field];
+      if (value === undefined) {
+        continue;
+      }
+      if (user.role !== UserRole.ADMIN) {
+        throw new ForbiddenException(`只有管理员可以调整${label}`);
+      }
+      if (value === null) {
+        data[relation] = { disconnect: true } as never;
+      } else {
+        await this.ensureActiveUser(value);
+        data[relation] = { connect: { id: value } } as never;
+      }
+    }
+    return data;
+  }
+
+  private requireFinanceActor(
+    record: { approverId?: string | null; payerId?: string | null; settlementOwnerId?: string | null },
+    field: "approverId" | "payerId" | "settlementOwnerId",
+    user: PublicUser,
+    label: string,
+  ) {
+    const assigneeId = record[field];
+    if (user.role === UserRole.ADMIN) {
+      return;
+    }
+    if (!assigneeId) {
+      throw new BadRequestException(`请先指定${label}`);
+    }
+    if (assigneeId !== user.id) {
+      throw new ForbiddenException(`只有指定的${label}或管理员可以执行此操作`);
+    }
+  }
+
+  private validateTaskOutcome(
+    status: BusinessTaskStatus,
+    completionNote: string | null | undefined,
+    cancellationReason: string | null | undefined,
+    previousStatus?: BusinessTaskStatus,
+  ) {
+    if (status === BusinessTaskStatus.COMPLETED && previousStatus !== BusinessTaskStatus.COMPLETED && !completionNote) {
+      throw new BadRequestException("完成任务时必须填写完成说明");
+    }
+    if (status === BusinessTaskStatus.CANCELLED && previousStatus !== BusinessTaskStatus.CANCELLED && !cancellationReason) {
+      throw new BadRequestException("取消任务时必须填写取消原因");
+    }
+  }
+
+  private requireTaskActor(task: { assigneeId?: string | null }, user: PublicUser) {
+    if (user.role !== UserRole.ADMIN && task.assigneeId !== user.id) {
+      throw new ForbiddenException("只有任务负责人或管理员可以结束任务");
+    }
+  }
+
+  private validateTaskStatusTransition(current: BusinessTaskStatus, next: BusinessTaskStatus) {
+    const allowed: Record<BusinessTaskStatus, BusinessTaskStatus[]> = {
+      TODO: [BusinessTaskStatus.TODO, BusinessTaskStatus.IN_PROGRESS, BusinessTaskStatus.CANCELLED],
+      IN_PROGRESS: [BusinessTaskStatus.IN_PROGRESS, BusinessTaskStatus.COMPLETED, BusinessTaskStatus.CANCELLED],
+      COMPLETED: [BusinessTaskStatus.COMPLETED],
+      CANCELLED: [BusinessTaskStatus.CANCELLED],
+    };
+    if (!allowed[current].includes(next)) {
+      throw new BadRequestException(`任务状态不能从${current}变更为${next}`);
+    }
+  }
+
+  private isInitialTaskStatus(status: BusinessTaskStatus) {
+    return status === BusinessTaskStatus.TODO || status === BusinessTaskStatus.IN_PROGRESS;
+  }
+
+  private validateFinanceStatusTransition(current: BusinessFinanceStatus, next: BusinessFinanceStatus) {
+    const allowed: Record<BusinessFinanceStatus, BusinessFinanceStatus[]> = {
+      DRAFT: [BusinessFinanceStatus.DRAFT, BusinessFinanceStatus.PENDING, BusinessFinanceStatus.CANCELLED],
+      PENDING: [BusinessFinanceStatus.PENDING, BusinessFinanceStatus.APPROVED, BusinessFinanceStatus.REJECTED, BusinessFinanceStatus.CANCELLED],
+      APPROVED: [BusinessFinanceStatus.APPROVED, BusinessFinanceStatus.PAID, BusinessFinanceStatus.CANCELLED],
+      PAID: [BusinessFinanceStatus.PAID, BusinessFinanceStatus.SETTLED],
+      SETTLED: [BusinessFinanceStatus.SETTLED],
+      REJECTED: [BusinessFinanceStatus.REJECTED, BusinessFinanceStatus.DRAFT],
+      CANCELLED: [BusinessFinanceStatus.CANCELLED],
+    };
+    if (!allowed[current].includes(next)) {
+      throw new BadRequestException(`财务记录状态不能从${current}变更为${next}`);
+    }
+  }
+
+  private isInitialFinanceStatus(status: BusinessFinanceStatus) {
+    return status === BusinessFinanceStatus.DRAFT || status === BusinessFinanceStatus.PENDING;
+  }
+
   private async logActivity(matterId: string, user: PublicUser, action: BusinessActivityAction, summary: string) {
     await this.prisma.businessMatterActivity.create({ data: { matterId, actorId: user.id, action, summary } });
   }
@@ -500,12 +701,22 @@ export class BusinessWorkflowService {
     return {
       assignee: { select: personSelect },
       createdBy: { select: personSelect },
+      completedBy: { select: personSelect },
+      cancelledBy: { select: personSelect },
     };
   }
 
   private financeInclude(): Prisma.BusinessMatterFinanceRecordInclude {
     return {
       createdBy: { select: personSelect },
+      applicant: { select: personSelect },
+      handler: { select: personSelect },
+      approver: { select: personSelect },
+      payer: { select: personSelect },
+      settlementOwner: { select: personSelect },
+      approvedBy: { select: personSelect },
+      paidBy: { select: personSelect },
+      rejectedBy: { select: personSelect },
       documents: { include: { document: { include: { currentVersion: true } }, version: true }, orderBy: { createdAt: "desc" } },
     };
   }

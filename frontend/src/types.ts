@@ -283,14 +283,22 @@ export interface BusinessTaskRecord {
   description: string | null;
   status: BusinessTaskStatus;
   priority: BusinessTaskPriority;
+  progress: number;
   dueDate: string | null;
+  startedAt: string | null;
   completedAt: string | null;
+  completedById: string | null;
+  completionNote: string | null;
+  cancelledById: string | null;
+  cancellationReason: string | null;
   assigneeId: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
   assignee?: BusinessMatterPerson | null;
   createdBy?: BusinessMatterPerson;
+  completedBy?: BusinessMatterPerson | null;
+  cancelledBy?: BusinessMatterPerson | null;
 }
 
 export interface BusinessContractRecord {
@@ -330,16 +338,37 @@ export interface BusinessFinanceRecord {
   title: string;
   amount: string;
   currency: string;
+  applicantId: string | null;
+  handlerId: string | null;
+  approverId: string | null;
+  payerId: string | null;
+  settlementOwnerId: string | null;
   occurredAt: string | null;
   counterparty: string | null;
   dueDate: string | null;
   settledAt: string | null;
+  approvedAt: string | null;
+  approvedById: string | null;
+  paidAt: string | null;
+  paidById: string | null;
+  rejectedAt: string | null;
+  rejectedById: string | null;
+  rejectionReason: string | null;
+  settlementNote: string | null;
   remark: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
   documents: BusinessFinanceDocumentLink[];
   createdBy?: BusinessMatterPerson;
+  applicant?: BusinessMatterPerson | null;
+  handler?: BusinessMatterPerson | null;
+  approver?: BusinessMatterPerson | null;
+  payer?: BusinessMatterPerson | null;
+  settlementOwner?: BusinessMatterPerson | null;
+  approvedBy?: BusinessMatterPerson | null;
+  paidBy?: BusinessMatterPerson | null;
+  rejectedBy?: BusinessMatterPerson | null;
 }
 
 export interface BusinessActivityRecord {

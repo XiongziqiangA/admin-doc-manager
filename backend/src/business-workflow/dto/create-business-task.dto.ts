@@ -1,6 +1,6 @@
 import { ApiPropertyOptional, ApiProperty } from "@nestjs/swagger";
 import { BusinessTaskPriority, BusinessTaskStatus } from "@prisma/client";
-import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class CreateBusinessTaskDto {
   @ApiProperty({ description: "任务标题" })
@@ -20,6 +20,13 @@ export class CreateBusinessTaskDto {
   @IsEnum(BusinessTaskPriority)
   priority?: BusinessTaskPriority;
 
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  progress?: number;
+
   @ApiPropertyOptional({ enum: BusinessTaskStatus, default: BusinessTaskStatus.TODO })
   @IsOptional()
   @IsEnum(BusinessTaskStatus)
@@ -34,4 +41,16 @@ export class CreateBusinessTaskDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string | null;
+
+  @ApiPropertyOptional({ description: "完成任务时的结果说明" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  completionNote?: string | null;
+
+  @ApiPropertyOptional({ description: "取消任务时的原因" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  cancellationReason?: string | null;
 }

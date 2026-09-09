@@ -27,6 +27,31 @@ export class UpdateBusinessFinanceRecordDto {
   @MaxLength(12)
   currency?: string;
 
+  @ApiPropertyOptional({ description: "申请人，仅管理员可调整" })
+  @IsOptional()
+  @IsString()
+  applicantId?: string | null;
+
+  @ApiPropertyOptional({ description: "经办负责人，仅管理员可调整" })
+  @IsOptional()
+  @IsString()
+  handlerId?: string | null;
+
+  @ApiPropertyOptional({ description: "审批负责人，仅管理员可调整" })
+  @IsOptional()
+  @IsString()
+  approverId?: string | null;
+
+  @ApiPropertyOptional({ description: "付款负责人，仅管理员可调整" })
+  @IsOptional()
+  @IsString()
+  payerId?: string | null;
+
+  @ApiPropertyOptional({ description: "结算负责人，仅管理员可调整" })
+  @IsOptional()
+  @IsString()
+  settlementOwnerId?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsDateString()
@@ -58,4 +83,16 @@ export class UpdateBusinessFinanceRecordDto {
   @IsString()
   @MaxLength(4000)
   remark?: string | null;
+
+  @ApiPropertyOptional({ description: "拒绝原因" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  rejectionReason?: string | null;
+
+  @ApiPropertyOptional({ description: "结算说明" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  settlementNote?: string | null;
 }

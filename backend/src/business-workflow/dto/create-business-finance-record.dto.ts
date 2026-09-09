@@ -24,6 +24,31 @@ export class CreateBusinessFinanceRecordDto {
   @MaxLength(12)
   currency?: string;
 
+  @ApiPropertyOptional({ description: "申请人；不填时使用当前用户" })
+  @IsOptional()
+  @IsString()
+  applicantId?: string;
+
+  @ApiPropertyOptional({ description: "经办负责人；不填时使用当前用户" })
+  @IsOptional()
+  @IsString()
+  handlerId?: string;
+
+  @ApiPropertyOptional({ description: "审批负责人" })
+  @IsOptional()
+  @IsString()
+  approverId?: string | null;
+
+  @ApiPropertyOptional({ description: "付款负责人" })
+  @IsOptional()
+  @IsString()
+  payerId?: string | null;
+
+  @ApiPropertyOptional({ description: "结算负责人" })
+  @IsOptional()
+  @IsString()
+  settlementOwnerId?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -61,4 +86,16 @@ export class CreateBusinessFinanceRecordDto {
   @IsString()
   @MaxLength(4000)
   remark?: string | null;
+
+  @ApiPropertyOptional({ description: "拒绝原因" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  rejectionReason?: string | null;
+
+  @ApiPropertyOptional({ description: "结算说明" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  settlementNote?: string | null;
 }

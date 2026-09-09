@@ -16,6 +16,8 @@ import {
   InputNumber,
   List,
   Modal,
+  Progress,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -123,8 +125,11 @@ interface TaskFormValues {
   description?: string;
   status: BusinessTaskStatus;
   priority: BusinessTaskPriority;
+  progress?: number;
   dueDate?: string;
   assigneeId?: string;
+  completionNote?: string;
+  cancellationReason?: string;
 }
 
 interface FinanceFormValues {
@@ -134,12 +139,21 @@ interface FinanceFormValues {
   amount: number;
   currency: string;
   status: BusinessFinanceStatus;
+  applicantId?: string;
+  handlerId?: string;
+  approverId?: string;
+  payerId?: string;
+  settlementOwnerId?: string;
   occurredAt?: string;
   counterparty?: string;
   dueDate?: string;
   settledAt?: string;
+  rejectionReason?: string;
+  settlementNote?: string;
   remark?: string;
 }
+
+type TaskView = "all" | "mine" | "unassigned" | "overdue";
 
 interface ContractFormValues {
   contractNo?: string;
@@ -262,9 +276,12 @@ export function BusinessWorkflowPanel({
   const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherSubmitting, setVoucherSubmitting] = useState(false);
+  const [taskView, setTaskView] = useState<TaskView>("all");
   const [taskForm] = Form.useForm<TaskFormValues>();
   const [financeForm] = Form.useForm<FinanceFormValues>();
   const [contractForm] = Form.useForm<ContractFormValues>();
+  const taskStatusValue = Form.useWatch("status", taskForm);
+  const financeStatusValue = Form.useWatch("status", financeForm);
 
   const isAdmin = currentUser.role === "ADMIN";
 
@@ -305,8 +322,11 @@ export function BusinessWorkflowPanel({
       description: task.description ?? undefined,
       status: task.status,
       priority: task.priority,
+      progress: task.progress,
       dueDate: task.dueDate?.slice(0, 10),
       assigneeId: task.assigneeId ?? undefined,
+      completionNote: task.completionNote ?? undefined,
+      cancellationReason: task.cancellationReason ?? undefined,
     } : { status: "TODO", priority: "NORMAL", assigneeId: matter.ownerId });
     setTaskOpen(true);
   };
@@ -320,7 +340,10 @@ export function BusinessWorkflowPanel({
         description: values.description?.trim() || null,
         status: values.status,
         priority: values.priority,
+        progress: values.progress ?? 0,
         dueDate: values.dueDate || null,
+        completionNote: values.completionNote?.trim() || null,
+        cancellationReason: values.cancellationReason?.trim() || null,
         ...(isAdmin ? { assigneeId: values.assigneeId || null } : {}),
       };
       if (editingTask) {
@@ -340,9 +363,14 @@ export function BusinessWorkflowPanel({
   };
 
   const completeTask = async (task: BusinessTaskRecord) => {
+    openTaskForm(task);
+    taskForm.setFieldValue("status", "COMPLETED");
+  };
+
+  const startTask = async (task: BusinessTaskRecord) => {
     try {
-      await updateBusinessTask(matter.id, task.id, { status: "COMPLETED" });
-      message.success("任务已完成");
+      await updateBusinessTask(matter.id, task.id, { status: "IN_PROGRESS", progress: Math.max(task.progress, 1) });
+      message.success("任务已开始");
       await refreshAfterChange();
     } catch (error) {
       message.error(`任务更新失败：${formatApiError(error)}`);
@@ -374,10 +402,17 @@ export function BusinessWorkflowPanel({
       amount: Number(record.amount),
       currency: record.currency,
       status: record.status,
+      applicantId: record.applicantId ?? undefined,
+      handlerId: record.handlerId ?? undefined,
+      approverId: record.approverId ?? undefined,
+      payerId: record.payerId ?? undefined,
+      settlementOwnerId: record.settlementOwnerId ?? undefined,
       occurredAt: record.occurredAt?.slice(0, 10),
       counterparty: record.counterparty ?? undefined,
       dueDate: record.dueDate?.slice(0, 10),
       settledAt: record.settledAt?.slice(0, 10),
+      rejectionReason: record.rejectionReason ?? undefined,
+      settlementNote: record.settlementNote ?? undefined,
       remark: record.remark ?? undefined,
     } : {
       kind: matter.type === "LOAN" ? "LOAN" : "REIMBURSEMENT",
@@ -397,10 +432,19 @@ export function BusinessWorkflowPanel({
         amount: values.amount,
         currency: values.currency.trim().toUpperCase(),
         status: values.status,
+        ...(isAdmin ? {
+          applicantId: values.applicantId || null,
+          handlerId: values.handlerId || null,
+          approverId: values.approverId || null,
+          payerId: values.payerId || null,
+          settlementOwnerId: values.settlementOwnerId || null,
+        } : {}),
         occurredAt: values.occurredAt || null,
         counterparty: values.counterparty?.trim() || null,
         dueDate: values.dueDate || null,
         settledAt: values.settledAt || null,
+        rejectionReason: values.rejectionReason?.trim() || null,
+        settlementNote: values.settlementNote?.trim() || null,
         remark: values.remark?.trim() || null,
         ...(!editingFinance && values.recordNo ? { recordNo: values.recordNo.trim() } : {}),
       };
@@ -558,19 +602,69 @@ export function BusinessWorkflowPanel({
     { title: "文件编号", dataIndex: "documentNo", width: 160 },
   ];
 
+  const visibleTasks = tasks.filter((task) => {
+    if (taskView === "mine") return task.assigneeId === currentUser.id;
+    if (taskView === "unassigned") return !task.assigneeId;
+    if (taskView === "overdue") return Boolean(task.dueDate && new Date(task.dueDate) < new Date() && !["COMPLETED", "CANCELLED"].includes(task.status));
+    return true;
+  });
+
+  const taskStatusOptions = (task?: BusinessTaskRecord) => {
+    if (!task) {
+      return ["TODO", "IN_PROGRESS"].map((value) => ({ value, label: taskStatusLabels[value as BusinessTaskStatus] }));
+    }
+    const transitions: Record<BusinessTaskStatus, BusinessTaskStatus[]> = {
+      TODO: ["TODO", "IN_PROGRESS", "CANCELLED"],
+      IN_PROGRESS: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+      COMPLETED: ["COMPLETED"],
+      CANCELLED: ["CANCELLED"],
+    };
+    return transitions[task.status].map((value) => ({ value, label: taskStatusLabels[value] }));
+  };
+
+  const financeStatusOptions = (record?: BusinessFinanceRecord) => {
+    const transitions: Record<BusinessFinanceStatus, BusinessFinanceStatus[]> = {
+      DRAFT: ["DRAFT", "PENDING", "CANCELLED"],
+      PENDING: ["PENDING", "APPROVED", "REJECTED", "CANCELLED"],
+      APPROVED: ["APPROVED", "PAID", "CANCELLED"],
+      PAID: ["PAID", "SETTLED"],
+      SETTLED: ["SETTLED"],
+      REJECTED: ["REJECTED", "DRAFT"],
+      CANCELLED: ["CANCELLED"],
+    };
+    const values: BusinessFinanceStatus[] = record ? transitions[record.status] : ["DRAFT", "PENDING"];
+    return values.map((value) => ({ value, label: financeStatusLabels[value] }));
+  };
+
   const taskTab = (
     <section className="business-workflow-tab-section">
       <div className="business-matter-section-heading">
         <Typography.Text strong>跟进任务</Typography.Text>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openTaskForm()}>新建任务</Button>
+        <Space wrap>
+          <Segmented
+            size="small"
+            value={taskView}
+            onChange={(value) => setTaskView(value as TaskView)}
+            options={[
+              { label: "全部", value: "all" },
+              { label: "我的", value: "mine" },
+              { label: "未分配", value: "unassigned" },
+              { label: "逾期", value: "overdue" },
+            ]}
+          />
+          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openTaskForm()}>新建任务</Button>
+        </Space>
       </div>
-      {tasks.length ? (
+      {visibleTasks.length ? (
         <List
-          dataSource={tasks}
+          dataSource={visibleTasks}
           renderItem={(task) => (
             <List.Item
               actions={[
-                ...(task.status !== "COMPLETED" && task.status !== "CANCELLED" ? [
+                ...(task.status === "TODO" ? [
+                  <Button key="start" type="link" onClick={() => void startTask(task)}>开始</Button>,
+                ] : []),
+                ...(task.status === "IN_PROGRESS" ? [
                   <Button key="complete" type="link" icon={<CheckOutlined />} onClick={() => void completeTask(task)}>完成</Button>,
                 ] : []),
                 <Button key="edit" type="link" icon={<EditOutlined />} onClick={() => openTaskForm(task)}>编辑</Button>,
@@ -578,11 +672,14 @@ export function BusinessWorkflowPanel({
               ]}
             >
               <List.Item.Meta
-                title={<Space wrap><Typography.Text strong>{task.title}</Typography.Text><Tag color={taskStatusColors[task.status]}>{taskStatusLabels[task.status]}</Tag><Tag color={priorityColors[task.priority]}>{priorityLabels[task.priority]}</Tag></Space>}
+                title={<Space wrap><Typography.Text strong>{task.title}</Typography.Text><Tag color={taskStatusColors[task.status]}>{taskStatusLabels[task.status]}</Tag><Tag color={priorityColors[task.priority]}>{priorityLabels[task.priority]}</Tag><Typography.Text type="secondary">进度 {task.progress}%</Typography.Text></Space>}
                 description={
                   <Space direction="vertical" size={2}>
-                    <Typography.Text type="secondary">负责人：{task.assignee?.realName || task.assignee?.username || "未指定"} · 截止：{formatDateOnly(task.dueDate)}</Typography.Text>
+                    <Typography.Text type="secondary">负责人：{task.assignee?.realName || task.assignee?.username || "未指定"} · 截止：{formatDateOnly(task.dueDate)} · 完成：{task.completedBy?.realName || "-"}</Typography.Text>
+                    <Progress percent={task.progress} size="small" status={task.status === "CANCELLED" ? "exception" : task.status === "COMPLETED" ? "success" : "active"} />
                     {task.description ? <Typography.Text>{task.description}</Typography.Text> : null}
+                    {task.completionNote ? <Typography.Text type="success">完成说明：{task.completionNote}</Typography.Text> : null}
+                    {task.cancellationReason ? <Typography.Text type="danger">取消原因：{task.cancellationReason}</Typography.Text> : null}
                   </Space>
                 }
               />
@@ -617,6 +714,11 @@ export function BusinessWorkflowPanel({
                   <div className="business-finance-content">
                     <Typography.Text type="secondary">{record.recordNo} · {formatAmount(record.amount, record.currency)} · {formatDateOnly(record.occurredAt)}</Typography.Text>
                     {record.counterparty ? <Typography.Text>往来对象：{record.counterparty}</Typography.Text> : null}
+                    <Typography.Text type="secondary">
+                      申请人：{record.applicant?.realName || record.createdBy?.realName || "未指定"} · 经办：{record.handler?.realName || "未指定"} · 审批：{record.approver?.realName || "未指定"} · 付款：{record.payer?.realName || "未指定"} · 结算：{record.settlementOwner?.realName || "未指定"}
+                    </Typography.Text>
+                    {record.rejectionReason ? <Typography.Text type="danger">拒绝原因：{record.rejectionReason}</Typography.Text> : null}
+                    {record.settlementNote ? <Typography.Text type="success">结算说明：{record.settlementNote}</Typography.Text> : null}
                     {record.documents.length ? (
                       <Space wrap size={4}>
                         {record.documents.map((link) => (
@@ -694,11 +796,14 @@ export function BusinessWorkflowPanel({
         <Form form={taskForm} layout="vertical">
           <Form.Item name="title" label="任务标题" rules={[{ required: true, message: "请输入任务标题" }]}><Input maxLength={200} /></Form.Item>
           <div className="business-workflow-form-grid">
-            <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={Object.entries(taskStatusLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
+            <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={taskStatusOptions(editingTask ?? undefined)} /></Form.Item>
             <Form.Item name="priority" label="优先级" rules={[{ required: true }]}><Select options={Object.entries(priorityLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
             <Form.Item name="dueDate" label="截止日期"><Input type="date" /></Form.Item>
             {isAdmin ? <Form.Item name="assigneeId" label="负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item> : null}
+            <Form.Item name="progress" label="进度（%）"><InputNumber min={0} max={100} precision={0} className="full-width-control" /></Form.Item>
           </div>
+          {taskStatusValue === "COMPLETED" ? <Form.Item name="completionNote" label="完成说明" rules={[{ required: true, message: "请输入完成说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
+          {taskStatusValue === "CANCELLED" ? <Form.Item name="cancellationReason" label="取消原因" rules={[{ required: true, message: "请输入取消原因" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           <Form.Item name="description" label="说明"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
         </Form>
       </Modal>
@@ -707,10 +812,19 @@ export function BusinessWorkflowPanel({
         <Form form={financeForm} layout="vertical">
           <div className="business-workflow-form-grid">
             <Form.Item name="kind" label="记录类型" rules={[{ required: true }]}><Select options={Object.entries(financeKindLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
-            <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={Object.entries(financeStatusLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
+            <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={financeStatusOptions(editingFinance ?? undefined)} /></Form.Item>
           </div>
           <Form.Item name="title" label="记录标题" rules={[{ required: true, message: "请输入记录标题" }]}><Input maxLength={200} /></Form.Item>
           {!editingFinance ? <Form.Item name="recordNo" label="业务单号"><Input maxLength={120} placeholder="留空时自动生成" /></Form.Item> : null}
+          {isAdmin ? (
+            <div className="business-workflow-form-grid">
+              <Form.Item name="applicantId" label="申请人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+              <Form.Item name="handlerId" label="经办负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+              <Form.Item name="approverId" label="审批负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+              <Form.Item name="payerId" label="付款负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+              <Form.Item name="settlementOwnerId" label="结算负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+            </div>
+          ) : null}
           <div className="business-workflow-form-grid">
             <Form.Item name="amount" label="金额" rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0} precision={2} className="full-width-control" /></Form.Item>
             <Form.Item name="currency" label="币种" rules={[{ required: true }]}><Input maxLength={12} /></Form.Item>
@@ -719,6 +833,8 @@ export function BusinessWorkflowPanel({
             <Form.Item name="settledAt" label="结清日期"><Input type="date" /></Form.Item>
             <Form.Item name="counterparty" label="往来对象"><Input maxLength={200} /></Form.Item>
           </div>
+          {financeStatusValue === "REJECTED" ? <Form.Item name="rejectionReason" label="拒绝原因" rules={[{ required: true, message: "请输入拒绝原因" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
+          {financeStatusValue === "SETTLED" ? <Form.Item name="settlementNote" label="结算说明" rules={[{ required: true, message: "请输入结算说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           <Form.Item name="remark" label="备注"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
         </Form>
       </Modal>
