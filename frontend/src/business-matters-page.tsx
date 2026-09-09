@@ -131,6 +131,8 @@ export function BusinessMattersPage({
   const [attachKeyword, setAttachKeyword] = useState("");
   const [availableDocuments, setAvailableDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [detachingDocument, setDetachingDocument] = useState<DocumentRecord | null>(null);
+  const [detachSubmitting, setDetachSubmitting] = useState(false);
   const [ownerInputMode, setOwnerInputMode] = useState<ReferenceInputMode>("master");
   const [departmentInputMode, setDepartmentInputMode] = useState<ReferenceInputMode>("master");
   const [partnerInputMode, setPartnerInputMode] = useState<ReferenceInputMode>("master");
@@ -374,21 +376,25 @@ export function BusinessMattersPage({
     if (!selectedMatter) {
       return;
     }
-    Modal.confirm({
-      title: "取消文件关联",
-      content: `确认取消“${document.title}”与当前事项的关联吗？源文件不会被删除。`,
-      okText: "取消关联",
-      cancelText: "保留关联",
-      onOk: async () => {
-        try {
-          await detachBusinessMatterDocument(selectedMatter.id, document.id);
-          setSelectedMatter(await getBusinessMatter(selectedMatter.id));
-          message.success("文件关联已取消");
-        } catch (error) {
-          message.error(`取消关联失败：${formatApiError(error)}`);
-        }
-      },
-    });
+    setDetachingDocument(document);
+  };
+
+  const confirmDetachDocument = async () => {
+    if (!selectedMatter || !detachingDocument) {
+      return;
+    }
+    const matterId = selectedMatter.id;
+    setDetachSubmitting(true);
+    try {
+      await detachBusinessMatterDocument(matterId, detachingDocument.id);
+      setSelectedMatter(await getBusinessMatter(matterId));
+      setDetachingDocument(null);
+      message.success("文件关联已取消");
+    } catch (error) {
+      message.error(`取消关联失败：${formatApiError(error)}`);
+    } finally {
+      setDetachSubmitting(false);
+    }
   };
 
   const parentOptions = useMemo(
@@ -709,6 +715,26 @@ export function BusinessMattersPage({
       >
         <Typography.Paragraph>
           确认将“{deletingMatter?.title}”移入回收状态吗？关联文件和文件历史版本不会被删除。
+        </Typography.Paragraph>
+      </Modal>
+
+      <Modal
+        title="取消文件关联"
+        open={Boolean(detachingDocument)}
+        okText="取消关联"
+        cancelText="保留关联"
+        confirmLoading={detachSubmitting}
+        cancelButtonProps={{ disabled: detachSubmitting }}
+        onOk={() => void confirmDetachDocument()}
+        onCancel={() => {
+          if (!detachSubmitting) {
+            setDetachingDocument(null);
+          }
+        }}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          确认取消“{detachingDocument?.title}”与当前事项的关联吗？源文件不会被删除。
         </Typography.Paragraph>
       </Modal>
 
