@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { BusinessMatterStatus, DocumentStatus, Prisma, UserRole, UserStatus } from "@prisma/client";
+import { BusinessMatterStatus, DocumentStatus, PartnerStatus, Prisma, UserRole, UserStatus } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { PublicUser } from "../users/user.presenter";
@@ -110,7 +110,7 @@ export class BusinessMattersService {
       await this.ensureParentChain(id, dto.parentId);
     }
     await this.ensureReferences({
-      ownerId: dto.ownerId === null ? undefined : dto.ownerId,
+      ownerId: dto.ownerId,
       departmentId: dto.departmentId === null ? undefined : dto.departmentId,
       partnerId: dto.partnerId === null ? undefined : dto.partnerId,
     });
@@ -120,7 +120,7 @@ export class BusinessMattersService {
       type: dto.type,
       status: dto.status,
       parent: dto.parentId === undefined ? undefined : dto.parentId === null ? { disconnect: true } : { connect: { id: dto.parentId } },
-      owner: dto.ownerId === undefined ? undefined : dto.ownerId === null ? { connect: { id: matter.ownerId } } : { connect: { id: dto.ownerId } },
+      owner: dto.ownerId === undefined ? undefined : { connect: { id: dto.ownerId } },
       department: dto.departmentId === undefined ? undefined : dto.departmentId === null ? { disconnect: true } : { connect: { id: dto.departmentId } },
       partner: dto.partnerId === undefined ? undefined : dto.partnerId === null ? { disconnect: true } : { connect: { id: dto.partnerId } },
       startDate: dto.startDate === undefined ? undefined : dto.startDate === null ? null : new Date(dto.startDate),
@@ -219,7 +219,7 @@ export class BusinessMattersService {
     }
     if (input.partnerId) {
       const partner = await this.prisma.partner.findFirst({
-        where: { id: input.partnerId, deletedAt: null, status: "ACTIVE" },
+        where: { id: input.partnerId, deletedAt: null, status: PartnerStatus.ACTIVE },
         select: { id: true },
       });
       if (!partner) {
@@ -239,7 +239,12 @@ export class BusinessMattersService {
     if (!current) {
       throw new BadRequestException("上级事项不存在");
     }
+    const visited = new Set<string>();
     while (current.parentId) {
+      if (visited.has(current.id)) {
+        throw new BadRequestException("事项层级不能形成循环");
+      }
+      visited.add(current.id);
       if (current.parentId === matterId) {
         throw new BadRequestException("事项层级不能形成循环");
       }

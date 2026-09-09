@@ -24,10 +24,10 @@ export class UpdateBusinessMatterDto {
   @IsString()
   parentId?: string | null;
 
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  ownerId?: string | null;
+  ownerId?: string;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
