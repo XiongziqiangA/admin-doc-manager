@@ -118,6 +118,8 @@ export function BusinessMattersPage({
   const [status, setStatus] = useState<BusinessMatterStatus>();
   const [selectedMatter, setSelectedMatter] = useState<BusinessMatterDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deletingMatter, setDeletingMatter] = useState<BusinessMatterRecord | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMatter, setEditingMatter] = useState<BusinessMatterRecord | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -291,25 +293,29 @@ export function BusinessMattersPage({
   };
 
   const removeMatter = (record: BusinessMatterRecord) => {
-    Modal.confirm({
-      title: "删除事项",
-      content: `确认将“${record.title}”移入回收状态吗？关联文件和文件历史版本不会被删除。`,
-      okText: "删除事项",
-      cancelText: "取消",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await deleteBusinessMatter(record.id);
-          if (selectedMatter?.id === record.id) {
-            setSelectedMatter(null);
-          }
-          message.success("事项已删除");
-          await loadMatters();
-        } catch (error) {
-          message.error(`事项删除失败：${formatApiError(error)}`);
-        }
-      },
-    });
+    setDeletingMatter(record);
+  };
+
+  const confirmRemoveMatter = async () => {
+    if (!deletingMatter) {
+      return;
+    }
+    setDeleteSubmitting(true);
+    try {
+      await deleteBusinessMatter(deletingMatter.id);
+      if (selectedMatter?.id === deletingMatter.id) {
+        setSelectedMatter(null);
+      }
+      setAllMatters((items) => items.filter((item) => item.id !== deletingMatter.id));
+      setDeletingMatter(null);
+      message.success("事项已删除");
+      await loadMatters();
+      setWorkflowRevision((value) => value + 1);
+    } catch (error) {
+      message.error(`事项删除失败：${formatApiError(error)}`);
+    } finally {
+      setDeleteSubmitting(false);
+    }
   };
 
   const loadAvailableDocuments = async () => {
@@ -683,6 +689,27 @@ export function BusinessMattersPage({
             <Input.TextArea rows={3} maxLength={2000} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="删除事项"
+        open={Boolean(deletingMatter)}
+        okText="删除事项"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        cancelButtonProps={{ disabled: deleteSubmitting }}
+        confirmLoading={deleteSubmitting}
+        onOk={() => void confirmRemoveMatter()}
+        onCancel={() => {
+          if (!deleteSubmitting) {
+            setDeletingMatter(null);
+          }
+        }}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          确认将“{deletingMatter?.title}”移入回收状态吗？关联文件和文件历史版本不会被删除。
+        </Typography.Paragraph>
       </Modal>
 
       <Drawer
