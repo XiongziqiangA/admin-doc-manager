@@ -23,7 +23,13 @@ export class BusinessMattersService {
 
   async create(dto: CreateBusinessMatterDto, user: PublicUser) {
     const ownerId = dto.ownerId ?? user.id;
+    const ownerName = this.normalizeOptionalLabel(dto.ownerName);
+    const departmentName = this.normalizeOptionalLabel(dto.departmentName);
+    const partnerName = this.normalizeOptionalLabel(dto.partnerName);
     this.validateDateRange(dto.startDate, dto.endDate);
+    this.validateExclusiveReference("负责人", dto.ownerId, ownerName);
+    this.validateExclusiveReference("部门", dto.departmentId, departmentName);
+    this.validateExclusiveReference("合作单位", dto.partnerId, partnerName);
     await this.ensureReferences({
       ownerId: dto.ownerId,
       departmentId: dto.departmentId,
@@ -41,9 +47,12 @@ export class BusinessMattersService {
         status: dto.status ?? BusinessMatterStatus.PLANNING,
         parentId: dto.parentId ?? null,
         ownerId,
+        ownerName,
         createdById: user.id,
         departmentId: dto.departmentId ?? null,
+        departmentName,
         partnerId: dto.partnerId ?? null,
+        partnerName,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         endDate: dto.endDate ? new Date(dto.endDate) : undefined,
         amount: this.toDecimal(dto.amount),
@@ -68,6 +77,9 @@ export class BusinessMattersService {
             { title: { contains: query.keyword, mode: "insensitive" } },
             { matterNo: { contains: query.keyword, mode: "insensitive" } },
             { remark: { contains: query.keyword, mode: "insensitive" } },
+            { ownerName: { contains: query.keyword, mode: "insensitive" } },
+            { departmentName: { contains: query.keyword, mode: "insensitive" } },
+            { partnerName: { contains: query.keyword, mode: "insensitive" } },
           ]
         : undefined,
     };
@@ -121,9 +133,15 @@ export class BusinessMattersService {
 
   async update(id: string, dto: UpdateBusinessMatterDto, user: PublicUser) {
     const matter = await this.requireEditable(id, user);
+    const ownerName = dto.ownerName === undefined ? undefined : this.normalizeOptionalLabel(dto.ownerName);
+    const departmentName = dto.departmentName === undefined ? undefined : this.normalizeOptionalLabel(dto.departmentName);
+    const partnerName = dto.partnerName === undefined ? undefined : this.normalizeOptionalLabel(dto.partnerName);
     if (dto.ownerId === null) {
       throw new BadRequestException("负责人不能为空");
     }
+    this.validateExclusiveReference("负责人", dto.ownerId, ownerName);
+    this.validateExclusiveReference("部门", dto.departmentId, departmentName);
+    this.validateExclusiveReference("合作单位", dto.partnerId, partnerName);
     if (dto.parentId !== undefined && dto.parentId !== null) {
       await this.ensureParentChain(id, dto.parentId);
     }
@@ -143,8 +161,15 @@ export class BusinessMattersService {
       status: dto.status,
       parent: dto.parentId === undefined ? undefined : dto.parentId === null ? { disconnect: true } : { connect: { id: dto.parentId } },
       owner: dto.ownerId === undefined ? undefined : { connect: { id: dto.ownerId } },
-      department: dto.departmentId === undefined ? undefined : dto.departmentId === null ? { disconnect: true } : { connect: { id: dto.departmentId } },
-      partner: dto.partnerId === undefined ? undefined : dto.partnerId === null ? { disconnect: true } : { connect: { id: dto.partnerId } },
+      ownerName: dto.ownerName !== undefined ? ownerName : dto.ownerId !== undefined ? null : undefined,
+      department: dto.departmentId === undefined
+        ? dto.departmentName === undefined ? undefined : { disconnect: true }
+        : dto.departmentId === null ? { disconnect: true } : { connect: { id: dto.departmentId } },
+      departmentName: dto.departmentName !== undefined ? departmentName : dto.departmentId !== undefined ? null : undefined,
+      partner: dto.partnerId === undefined
+        ? dto.partnerName === undefined ? undefined : { disconnect: true }
+        : dto.partnerId === null ? { disconnect: true } : { connect: { id: dto.partnerId } },
+      partnerName: dto.partnerName !== undefined ? partnerName : dto.partnerId !== undefined ? null : undefined,
       startDate: dto.startDate === undefined ? undefined : dto.startDate === null ? null : new Date(dto.startDate),
       endDate: dto.endDate === undefined ? undefined : dto.endDate === null ? null : new Date(dto.endDate),
       amount: dto.amount === undefined ? undefined : this.toDecimal(dto.amount),
@@ -256,6 +281,17 @@ export class BusinessMattersService {
       throw new BadRequestException("事项名称不能为空");
     }
     return normalized;
+  }
+
+  private normalizeOptionalLabel(value: string | null | undefined) {
+    const normalized = value?.trim();
+    return normalized || null;
+  }
+
+  private validateExclusiveReference(label: string, id: string | null | undefined, customName: string | null | undefined) {
+    if (id && customName) {
+      throw new BadRequestException(`${label}不能同时选择已有记录和填写自定义名称`);
+    }
   }
 
   private validateDateRange(startDate?: Date | string | null, endDate?: Date | string | null) {

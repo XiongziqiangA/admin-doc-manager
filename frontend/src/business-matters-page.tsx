@@ -18,6 +18,7 @@ import {
   List,
   Modal,
   Select,
+  Segmented,
   Space,
   Spin,
   Table,
@@ -76,14 +77,19 @@ const statusColors: Record<BusinessMatterStatus, string> = {
   CANCELLED: "default",
 };
 
+type ReferenceInputMode = "master" | "custom";
+
 interface BusinessMatterFormValues {
   title: string;
   type: BusinessMatterType;
   status: BusinessMatterStatus;
   parentId?: string;
   ownerId?: string;
+  ownerName?: string;
   departmentId?: string;
+  departmentName?: string;
   partnerId?: string;
+  partnerName?: string;
   startDate?: string;
   endDate?: string;
   amount?: number;
@@ -123,6 +129,9 @@ export function BusinessMattersPage({
   const [attachKeyword, setAttachKeyword] = useState("");
   const [availableDocuments, setAvailableDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [ownerInputMode, setOwnerInputMode] = useState<ReferenceInputMode>("master");
+  const [departmentInputMode, setDepartmentInputMode] = useState<ReferenceInputMode>("master");
+  const [partnerInputMode, setPartnerInputMode] = useState<ReferenceInputMode>("master");
   const [workflowRevision, setWorkflowRevision] = useState(0);
   const [form] = Form.useForm<BusinessMatterFormValues>();
 
@@ -201,26 +210,38 @@ export function BusinessMattersPage({
   const resetModal = () => {
     form.resetFields();
     setEditingMatter(null);
+    setOwnerInputMode("master");
+    setDepartmentInputMode("master");
+    setPartnerInputMode("master");
     setModalOpen(false);
   };
 
   const openCreate = () => {
     setEditingMatter(null);
     form.resetFields();
-    form.setFieldsValue({ type: "PROJECT", status: "PLANNING" });
+    setOwnerInputMode("master");
+    setDepartmentInputMode("master");
+    setPartnerInputMode("master");
+    form.setFieldsValue({ type: "PROJECT", status: "PLANNING", ownerId: isAdmin ? currentUser.id : undefined });
     setModalOpen(true);
   };
 
   const openEdit = (record: BusinessMatterRecord) => {
     setEditingMatter(record);
+    setOwnerInputMode(record.ownerName ? "custom" : "master");
+    setDepartmentInputMode(record.departmentName ? "custom" : "master");
+    setPartnerInputMode(record.partnerName ? "custom" : "master");
     form.setFieldsValue({
       title: record.title,
       type: record.type,
       status: record.status,
       parentId: record.parentId ?? undefined,
       ownerId: record.ownerId,
+      ownerName: record.ownerName ?? undefined,
       departmentId: record.departmentId ?? undefined,
+      departmentName: record.departmentName ?? undefined,
       partnerId: record.partnerId ?? undefined,
+      partnerName: record.partnerName ?? undefined,
       startDate: record.startDate?.slice(0, 10) ?? undefined,
       endDate: record.endDate?.slice(0, 10) ?? undefined,
       amount: record.amount === null ? undefined : Number(record.amount),
@@ -238,9 +259,15 @@ export function BusinessMattersPage({
         type: values.type,
         status: values.status,
         parentId: values.parentId || null,
-        ...(isAdmin && values.ownerId ? { ownerId: values.ownerId } : {}),
-        departmentId: values.departmentId || null,
-        partnerId: values.partnerId || null,
+        ...(ownerInputMode === "master"
+          ? isAdmin && values.ownerId
+            ? { ownerId: values.ownerId, ownerName: null }
+            : { ownerName: null }
+          : { ownerName: values.ownerName?.trim() || null }),
+        departmentId: departmentInputMode === "master" ? values.departmentId || null : null,
+        departmentName: departmentInputMode === "custom" ? values.departmentName?.trim() || null : null,
+        partnerId: partnerInputMode === "master" ? values.partnerId || null : null,
+        partnerName: partnerInputMode === "custom" ? values.partnerName?.trim() || null : null,
         startDate: values.startDate || null,
         endDate: values.endDate || null,
         amount: values.amount ?? null,
@@ -405,7 +432,7 @@ export function BusinessMattersPage({
       title: "负责人",
       dataIndex: "owner",
       width: 120,
-      render: (owner: BusinessMatterRecord["owner"]) => owner?.realName || owner?.username || "-",
+      render: (_owner: BusinessMatterRecord["owner"], record) => record.ownerName || record.owner?.realName || record.owner?.username || "-",
     },
     {
       title: "关联文件",
@@ -564,22 +591,82 @@ export function BusinessMattersPage({
           <Form.Item name="parentId" label="上级事项">
             <Select allowClear showSearch optionFilterProp="label" options={parentOptions} placeholder="可选，不填表示顶级事项" />
           </Form.Item>
-          <div className="business-matter-form-grid">
-            {isAdmin ? (
-              <Form.Item name="ownerId" label="负责人">
-                <Select
-                  showSearch
-                  optionFilterProp="label"
-                  options={users.map((item) => ({ label: `${item.realName}（${item.username}）`, value: item.id }))}
-                />
-              </Form.Item>
-            ) : null}
-            <Form.Item name="departmentId" label="所属部门">
-              <Select allowClear options={departments.map((item) => ({ label: item.name, value: item.id }))} />
-            </Form.Item>
-            <Form.Item name="partnerId" label="合作单位">
-              <Select allowClear options={partners.map((item) => ({ label: item.companyName, value: item.id }))} />
-            </Form.Item>
+          <div className="business-matter-reference-grid">
+            <div className="business-matter-reference-cell">
+              <Typography.Text strong>负责人</Typography.Text>
+              <Segmented
+                block
+                value={ownerInputMode}
+                options={[{ label: "系统用户", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                onChange={(value) => {
+                  const next = value as ReferenceInputMode;
+                  setOwnerInputMode(next);
+                  form.setFieldsValue(next === "custom" ? { ownerId: undefined } : { ownerName: undefined });
+                }}
+              />
+              {ownerInputMode === "custom" ? (
+                <Form.Item name="ownerName" rules={[{ required: true, message: "请输入负责人名称" }]}>
+                  <Input maxLength={200} placeholder="例如：张三或外部项目负责人" />
+                </Form.Item>
+              ) : isAdmin ? (
+                <Form.Item name="ownerId">
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={users.map((item) => ({ label: `${item.realName}（${item.username}）`, value: item.id }))}
+                  />
+                </Form.Item>
+              ) : (
+                <Input disabled value={editingMatter?.owner?.realName || currentUser.realName} />
+              )}
+              <Typography.Text type="secondary">自定义负责人只改变业务展示名称，系统权限仍按内部账号判断。</Typography.Text>
+            </div>
+            <div className="business-matter-reference-cell">
+              <Typography.Text strong>所属部门</Typography.Text>
+              <Segmented
+                block
+                value={departmentInputMode}
+                options={[{ label: "标准部门", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                onChange={(value) => {
+                  const next = value as ReferenceInputMode;
+                  setDepartmentInputMode(next);
+                  form.setFieldsValue(next === "custom" ? { departmentId: undefined } : { departmentName: undefined });
+                }}
+              />
+              {departmentInputMode === "custom" ? (
+                <Form.Item name="departmentName" rules={[{ required: true, message: "请输入部门名称" }]}>
+                  <Input maxLength={200} placeholder="例如：临时项目组" />
+                </Form.Item>
+              ) : (
+                <Form.Item name="departmentId">
+                  <Select allowClear showSearch optionFilterProp="label" options={departments.map((item) => ({ label: item.name, value: item.id }))} />
+                </Form.Item>
+              )}
+              <Typography.Text type="secondary">自定义名称仅记录在当前事项，不会修改部门主数据。</Typography.Text>
+            </div>
+            <div className="business-matter-reference-cell">
+              <Typography.Text strong>合作单位</Typography.Text>
+              <Segmented
+                block
+                value={partnerInputMode}
+                options={[{ label: "标准单位", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                onChange={(value) => {
+                  const next = value as ReferenceInputMode;
+                  setPartnerInputMode(next);
+                  form.setFieldsValue(next === "custom" ? { partnerId: undefined } : { partnerName: undefined });
+                }}
+              />
+              {partnerInputMode === "custom" ? (
+                <Form.Item name="partnerName" rules={[{ required: true, message: "请输入合作单位名称" }]}>
+                  <Input maxLength={200} placeholder="例如：某某供应商或待定单位" />
+                </Form.Item>
+              ) : (
+                <Form.Item name="partnerId">
+                  <Select allowClear showSearch optionFilterProp="label" options={partners.map((item) => ({ label: item.companyName, value: item.id }))} />
+                </Form.Item>
+              )}
+              <Typography.Text type="secondary">自定义名称仅记录在当前事项，不会新增合作单位主数据。</Typography.Text>
+            </div>
           </div>
           <div className="business-matter-form-grid">
             <Form.Item name="startDate" label="开始日期">
@@ -627,10 +714,10 @@ export function BusinessMattersPage({
                 <Tag color={statusColors[selectedMatter.status]}>{statusLabels[selectedMatter.status]}</Tag>
               </Descriptions.Item>
               <Descriptions.Item label="负责人">
-                {selectedMatter.owner?.realName || selectedMatter.owner?.username || "-"}
+                {selectedMatter.ownerName || selectedMatter.owner?.realName || selectedMatter.owner?.username || "-"}
               </Descriptions.Item>
-              <Descriptions.Item label="所属部门">{selectedMatter.department?.name || "-"}</Descriptions.Item>
-              <Descriptions.Item label="合作单位">{selectedMatter.partner?.companyName || "-"}</Descriptions.Item>
+              <Descriptions.Item label="所属部门">{selectedMatter.departmentName || selectedMatter.department?.name || "-"}</Descriptions.Item>
+              <Descriptions.Item label="合作单位">{selectedMatter.partnerName || selectedMatter.partner?.companyName || "-"}</Descriptions.Item>
               <Descriptions.Item label="开始日期">{formatDateOnly(selectedMatter.startDate)}</Descriptions.Item>
               <Descriptions.Item label="结束日期">{formatDateOnly(selectedMatter.endDate)}</Descriptions.Item>
               <Descriptions.Item label="事项金额">{formatAmount(selectedMatter.amount)}</Descriptions.Item>

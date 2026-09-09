@@ -28,15 +28,33 @@ export class CreateBusinessMatterDto {
   @IsString()
   ownerId?: string;
 
+  @ApiPropertyOptional({ description: "业务展示用的自定义负责人名称；系统权限负责人仍由 ownerId 控制" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ownerName?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   departmentId?: string;
 
+  @ApiPropertyOptional({ description: "当前事项的自定义部门名称，与 departmentId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  departmentName?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   partnerId?: string;
+
+  @ApiPropertyOptional({ description: "当前事项的自定义合作单位名称，与 partnerId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  partnerName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

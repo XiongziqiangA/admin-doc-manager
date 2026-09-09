@@ -82,6 +82,88 @@ describe("BusinessMattersService", () => {
     );
   });
 
+  it("stores custom business labels while retaining the internal owner", async () => {
+    prisma.businessMatter.create.mockResolvedValue({
+      id: "matter-1",
+      title: "临时合作事项",
+      type: BusinessMatterType.PROJECT,
+      status: BusinessMatterStatus.PLANNING,
+    });
+
+    await service.create(
+      {
+        title: "临时合作事项",
+        type: BusinessMatterType.PROJECT,
+        ownerName: "外部负责人",
+        departmentName: "临时项目组",
+        partnerName: "待录入合作单位",
+      },
+      user,
+    );
+
+    expect(prisma.businessMatter.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerId: user.id,
+          ownerName: "外部负责人",
+          departmentName: "临时项目组",
+          partnerName: "待录入合作单位",
+          departmentId: null,
+          partnerId: null,
+        }),
+      }),
+    );
+  });
+
+  it("disconnects master data when an existing matter switches to custom labels", async () => {
+    prisma.businessMatter.findFirst.mockResolvedValue({
+      id: "matter-1",
+      createdById: user.id,
+      ownerId: user.id,
+      startDate: null,
+      endDate: null,
+    });
+
+    await service.update(
+      "matter-1",
+      {
+        ownerName: "自定义负责人",
+        departmentId: null,
+        departmentName: "临时部门",
+        partnerId: null,
+        partnerName: "临时合作单位",
+      },
+      user,
+    );
+
+    expect(prisma.businessMatter.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerName: "自定义负责人",
+          department: { disconnect: true },
+          departmentName: "临时部门",
+          partner: { disconnect: true },
+          partnerName: "临时合作单位",
+        }),
+      }),
+    );
+  });
+
+  it("rejects submitting a master reference and custom label together", async () => {
+    await expect(
+      service.create(
+        {
+          title: "冲突引用事项",
+          type: BusinessMatterType.PROJECT,
+          departmentId: "department-1",
+          departmentName: "临时部门",
+        },
+        user,
+      ),
+    ).rejects.toThrow("部门不能同时选择已有记录和填写自定义名称");
+    expect(prisma.businessMatter.create).not.toHaveBeenCalled();
+  });
+
   it("rejects blank titles and reversed date ranges", async () => {
     await expect(
       service.create(
@@ -133,6 +215,9 @@ describe("BusinessMattersService", () => {
             { title: { contains: "推广", mode: "insensitive" } },
             { matterNo: { contains: "推广", mode: "insensitive" } },
             { remark: { contains: "推广", mode: "insensitive" } },
+            { ownerName: { contains: "推广", mode: "insensitive" } },
+            { departmentName: { contains: "推广", mode: "insensitive" } },
+            { partnerName: { contains: "推广", mode: "insensitive" } },
           ],
         }),
         skip: 10,

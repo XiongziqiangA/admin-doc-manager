@@ -235,9 +235,12 @@ export interface BusinessMatterSummary {
 
 export interface BusinessMatterRecord extends BusinessMatterSummary {
   ownerId: string;
+  ownerName: string | null;
   createdById: string;
   departmentId: string | null;
+  departmentName: string | null;
   partnerId: string | null;
+  partnerName: string | null;
   startDate: string | null;
   endDate: string | null;
   amount: string | null;

@@ -193,6 +193,29 @@ body {
   min-width: 0;
 }
 
+.business-matter-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.business-matter-reference-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.business-matter-reference-cell .ant-form-item {
+  margin-bottom: 0;
+}
+
+.business-matter-reference-cell > .ant-typography:last-child {
+  min-height: 40px;
+  line-height: 20px;
+}
+
 .business-matter-detail-stack {
   display: flex;
   flex-direction: column;
@@ -1084,7 +1107,8 @@ body {
   }
 
   .business-workflow-stat-grid,
-  .business-workflow-form-grid {
+  .business-workflow-form-grid,
+  .business-matter-reference-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1128,6 +1152,10 @@ body {
   }
 
   .business-workflow-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-matter-reference-grid {
     grid-template-columns: 1fr;
   }
 

@@ -29,15 +29,33 @@ export class UpdateBusinessMatterDto {
   @IsString()
   ownerId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "业务展示用的自定义负责人名称" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ownerName?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
   departmentId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "当前事项的自定义部门名称，与 departmentId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  departmentName?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
   partnerId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "当前事项的自定义合作单位名称，与 partnerId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  partnerName?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
