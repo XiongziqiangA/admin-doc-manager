@@ -292,6 +292,30 @@ body {
   border-top: 1px solid #e5e7eb;
 }
 
+.business-project-plan-panel {
+  min-width: 0;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.business-project-progress-summary {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  margin: 12px 0;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.business-project-plan-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
 .business-workflow-tab-section {
   min-width: 0;
 }
@@ -1171,6 +1195,14 @@ body {
   .business-workflow-form-grid,
   .business-matter-reference-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .business-project-plan-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .business-project-progress-summary {
+    grid-template-columns: 1fr;
   }
 
   .business-workflow-reminder-row {

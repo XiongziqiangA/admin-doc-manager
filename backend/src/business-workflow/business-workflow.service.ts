@@ -88,6 +88,7 @@ export class BusinessWorkflowService {
 
   async createTask(matterId: string, dto: CreateBusinessTaskDto, user: PublicUser) {
     const matter = await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.validateTaskPlanReferences(matterId, dto.stageId, dto.milestoneId);
     const assigneeName = this.optionalText(dto.assigneeName);
     this.validateExclusivePerson("任务负责人", dto.assigneeId, assigneeName);
     const assigneeId = assigneeName ? null : dto.assigneeId ?? matter.ownerId;
@@ -105,6 +106,8 @@ export class BusinessWorkflowService {
     const task = await this.prisma.businessMatterTask.create({
       data: {
         matterId,
+        stageId: dto.stageId ?? null,
+        milestoneId: dto.milestoneId ?? null,
         title,
         description: this.optionalText(dto.description),
         status,
@@ -141,6 +144,11 @@ export class BusinessWorkflowService {
   async updateTask(matterId: string, taskId: string, dto: UpdateBusinessTaskDto, user: PublicUser) {
     await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const task = await this.requireTask(matterId, taskId);
+    await this.validateTaskPlanReferences(
+      matterId,
+      dto.stageId === undefined ? task.stageId : dto.stageId,
+      dto.milestoneId === undefined ? task.milestoneId : dto.milestoneId,
+    );
     if (dto.assigneeId !== undefined && dto.assigneeId !== null) {
       if (user.role !== UserRole.ADMIN) {
         throw new ForbiddenException("只有管理员可以调整任务负责人");
@@ -162,6 +170,12 @@ export class BusinessWorkflowService {
     this.validateTaskOutcome(nextStatus, completionNote, cancellationReason, task.status);
     const data: Prisma.BusinessMatterTaskUpdateInput = {
       title: dto.title === undefined ? undefined : this.normalizeText(dto.title, "任务标题不能为空"),
+      stage: dto.stageId === undefined
+        ? undefined
+        : dto.stageId === null ? { disconnect: true } : { connect: { id: dto.stageId } },
+      milestone: dto.milestoneId === undefined
+        ? undefined
+        : dto.milestoneId === null ? { disconnect: true } : { connect: { id: dto.milestoneId } },
       description: dto.description === undefined ? undefined : this.optionalText(dto.description),
       priority: dto.priority,
       status: dto.status,
@@ -217,6 +231,8 @@ export class BusinessWorkflowService {
         ["进度", task.progress, updated.progress],
         ["负责人", task.assigneeId, updated.assigneeId],
         ["自定义负责人", task.assigneeName, updated.assigneeName],
+        ["所属阶段", task.stageId, updated.stageId],
+        ["所属里程碑", task.milestoneId, updated.milestoneId],
         ["截止日期", task.dueDate, updated.dueDate],
         ["完成说明", task.completionNote, updated.completionNote],
         ["完成时间", task.completedAt, updated.completedAt],
@@ -1344,6 +1360,8 @@ export class BusinessWorkflowService {
 
   private taskInclude(): Prisma.BusinessMatterTaskInclude {
     return {
+      stage: { select: { id: true, name: true, status: true, progress: true } },
+      milestone: { select: { id: true, title: true, status: true, dueDate: true } },
       assignee: { select: personSelect },
       createdBy: { select: personSelect },
       completedBy: { select: personSelect },
@@ -1356,6 +1374,26 @@ export class BusinessWorkflowService {
         orderBy: { createdAt: "desc" },
       },
     };
+  }
+
+  private async validateTaskPlanReferences(matterId: string, stageId?: string | null, milestoneId?: string | null) {
+    if (stageId) {
+      const stage = await this.prisma.businessMatterStage.findFirst({
+        where: { id: stageId, matterId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!stage) throw new BadRequestException("所属项目阶段不存在或不属于当前事项");
+    }
+    if (milestoneId) {
+      const milestone = await this.prisma.businessMatterMilestone.findFirst({
+        where: { id: milestoneId, matterId, deletedAt: null },
+        select: { id: true, stageId: true },
+      });
+      if (!milestone) throw new BadRequestException("所属里程碑不存在或不属于当前事项");
+      if (stageId && milestone.stageId && milestone.stageId !== stageId) {
+        throw new BadRequestException("任务所属阶段与里程碑所属阶段不一致");
+      }
+    }
   }
 
   private followUpInclude(): Prisma.BusinessMatterFollowUpInclude {

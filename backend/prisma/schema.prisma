@@ -114,6 +114,19 @@ enum BusinessTaskPriority {
   URGENT
 }
 
+enum BusinessStageStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BusinessMilestoneStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
 enum BusinessFollowUpMethod {
   CALL
   WECHAT
@@ -194,6 +207,11 @@ model User {
   createdBusinessTasks  BusinessMatterTask[]  @relation("BusinessTaskCreatedBy")
   completedBusinessTasks BusinessMatterTask[] @relation("BusinessTaskCompletedBy")
   cancelledBusinessTasks BusinessMatterTask[] @relation("BusinessTaskCancelledBy")
+  ownedBusinessMatterStages BusinessMatterStage[] @relation("BusinessStageOwner")
+  createdBusinessMatterStages BusinessMatterStage[] @relation("BusinessStageCreatedBy")
+  ownedBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneOwner")
+  createdBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneCreatedBy")
+  completedBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneCompletedBy")
   createdBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpCreatedBy")
   assignedBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpNextAssignee")
   createdBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceCreatedBy")
@@ -314,6 +332,8 @@ model BusinessMatter {
   partner     Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   documents   BusinessMatterDocument[]
   tasks       BusinessMatterTask[]
+  stages      BusinessMatterStage[]
+  milestones  BusinessMatterMilestone[]
   followUps   BusinessMatterFollowUp[]
   contract    BusinessMatterContract?
   financeRecords BusinessMatterFinanceRecord[]
@@ -349,6 +369,8 @@ model BusinessMatterDocument {
 model BusinessMatterTask {
   id          String               @id @default(uuid())
   matterId    String               @map("matter_id")
+  stageId     String?              @map("stage_id")
+  milestoneId String?              @map("milestone_id")
   title       String
   description String?              @db.Text
   status      BusinessTaskStatus   @default(TODO)
@@ -369,6 +391,8 @@ model BusinessMatterTask {
   updatedAt   DateTime             @updatedAt @map("updated_at")
   deletedAt   DateTime?            @map("deleted_at")
   matter      BusinessMatter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  stage       BusinessMatterStage?  @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  milestone   BusinessMatterMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   assignee    User?                @relation("BusinessTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   createdBy   User                 @relation("BusinessTaskCreatedBy", fields: [createdById], references: [id])
   completedBy User?                @relation("BusinessTaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
@@ -376,6 +400,8 @@ model BusinessMatterTask {
   documents   BusinessMatterTaskDocument[]
 
   @@index([matterId, status])
+  @@index([stageId, status])
+  @@index([milestoneId])
   @@index([assigneeId, status])
   @@index([completedById])
   @@index([cancelledAt])
@@ -383,6 +409,66 @@ model BusinessMatterTask {
   @@index([dueDate])
   @@index([deletedAt])
   @@map("business_matter_tasks")
+}
+
+model BusinessMatterStage {
+  id          String             @id @default(uuid())
+  matterId    String             @map("matter_id")
+  name        String
+  description String?            @db.Text
+  status      BusinessStageStatus @default(PLANNED)
+  progress    Int                @default(0)
+  sort        Int                @default(0)
+  startDate   DateTime?          @map("start_date")
+  endDate     DateTime?          @map("end_date")
+  ownerId     String?            @map("owner_id")
+  ownerName   String?            @map("owner_name")
+  createdById String             @map("created_by_id")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  deletedAt   DateTime?          @map("deleted_at")
+  matter      BusinessMatter     @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  owner       User?              @relation("BusinessStageOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy   User               @relation("BusinessStageCreatedBy", fields: [createdById], references: [id])
+  tasks       BusinessMatterTask[]
+  milestones  BusinessMatterMilestone[]
+
+  @@index([matterId, sort])
+  @@index([matterId, status])
+  @@index([ownerId])
+  @@index([endDate])
+  @@index([deletedAt])
+  @@map("business_matter_stages")
+}
+
+model BusinessMatterMilestone {
+  id            String                  @id @default(uuid())
+  matterId      String                  @map("matter_id")
+  stageId       String?                 @map("stage_id")
+  title         String
+  description   String?                 @db.Text
+  status        BusinessMilestoneStatus @default(PLANNED)
+  dueDate       DateTime?               @map("due_date")
+  completedAt   DateTime?               @map("completed_at")
+  completedById String?                 @map("completed_by_id")
+  ownerId       String?                 @map("owner_id")
+  ownerName     String?                 @map("owner_name")
+  createdById   String                  @map("created_by_id")
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+  deletedAt     DateTime?               @map("deleted_at")
+  matter        BusinessMatter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  stage         BusinessMatterStage?    @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  completedBy   User?                   @relation("BusinessMilestoneCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  owner         User?                   @relation("BusinessMilestoneOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy     User                    @relation("BusinessMilestoneCreatedBy", fields: [createdById], references: [id])
+  tasks         BusinessMatterTask[]
+
+  @@index([matterId, dueDate])
+  @@index([stageId])
+  @@index([ownerId, dueDate])
+  @@index([deletedAt])
+  @@map("business_matter_milestones")
 }
 
 model BusinessMatterFollowUp {

@@ -18,6 +18,9 @@ export type FinanceMaterialType =
 
 export type BusinessMatterType = "PROJECT" | "CONTRACT" | "REIMBURSEMENT" | "LOAN" | "PROCUREMENT" | "OTHER";
 export type BusinessMatterStatus = "PLANNING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type BusinessStageStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type BusinessMilestoneStatus = "PLANNED" | "COMPLETED" | "CANCELLED";
+export type BusinessProjectHealth = "HEALTHY" | "AT_RISK" | "DELAYED" | "COMPLETED" | "CANCELLED" | "NO_PLAN";
 export type BusinessTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type BusinessTaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type BusinessFollowUpMethod = "CALL" | "WECHAT" | "EMAIL" | "MEETING" | "ONSITE" | "OTHER";
@@ -255,6 +258,7 @@ export interface BusinessMatterRecord extends BusinessMatterSummary {
   department?: { id: string; name: string } | null;
   partner?: { id: string; companyName: string } | null;
   _count?: { documents: number; children: number };
+  progressSummary?: BusinessProjectProgressSummary;
 }
 
 export interface BusinessMatterChild extends BusinessMatterSummary {
@@ -306,6 +310,8 @@ export interface BusinessTaskRecord {
   cancellationReason: string | null;
   assigneeId: string | null;
   assigneeName: string | null;
+  stageId: string | null;
+  milestoneId: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
@@ -314,6 +320,69 @@ export interface BusinessTaskRecord {
   completedBy?: BusinessMatterPerson | null;
   cancelledBy?: BusinessMatterPerson | null;
   documents: BusinessWorkflowDocumentLink[];
+  stage?: { id: string; name: string; status: BusinessStageStatus; progress: number } | null;
+  milestone?: { id: string; title: string; status: BusinessMilestoneStatus; dueDate: string | null } | null;
+}
+
+export interface BusinessStageRecord {
+  id: string;
+  matterId: string;
+  name: string;
+  description: string | null;
+  status: BusinessStageStatus;
+  progress: number;
+  calculatedProgress: number;
+  sort: number;
+  startDate: string | null;
+  endDate: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  owner?: BusinessMatterPerson | null;
+  createdBy?: BusinessMatterPerson;
+  taskCount: number;
+}
+
+export interface BusinessMilestoneRecord {
+  id: string;
+  matterId: string;
+  stageId: string | null;
+  title: string;
+  description: string | null;
+  status: BusinessMilestoneStatus;
+  dueDate: string | null;
+  completedAt: string | null;
+  completedById: string | null;
+  ownerId: string | null;
+  ownerName: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  stage?: { id: string; name: string } | null;
+  owner?: BusinessMatterPerson | null;
+  createdBy?: BusinessMatterPerson;
+  completedBy?: BusinessMatterPerson | null;
+}
+
+export interface BusinessProjectProgressSummary {
+  progress: number;
+  health: BusinessProjectHealth;
+  delayed: boolean;
+  stageCount: number;
+  completedStageCount: number;
+  milestoneCount: number;
+  completedMilestoneCount: number;
+  overdueTaskCount: number;
+  overdueMilestoneCount: number;
+}
+
+export interface BusinessProjectPlan {
+  summary: BusinessProjectProgressSummary;
+  stages: BusinessStageRecord[];
+  milestones: BusinessMilestoneRecord[];
+  tasks: Array<Pick<BusinessTaskRecord, "id" | "title" | "stageId" | "milestoneId" | "progress" | "status" | "dueDate">>;
 }
 
 export interface BusinessFollowUpRecord {

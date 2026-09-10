@@ -5,7 +5,17 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { BusinessActivityAction, BusinessMatterStatus, DocumentStatus, PartnerStatus, Prisma, UserRole, UserStatus } from "@prisma/client";
+import {
+  BusinessActivityAction,
+  BusinessMatterStatus,
+  BusinessMilestoneStatus,
+  BusinessStageStatus,
+  DocumentStatus,
+  PartnerStatus,
+  Prisma,
+  UserRole,
+  UserStatus,
+} from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { PublicUser } from "../users/user.presenter";
@@ -14,6 +24,11 @@ import { AttachBusinessMatterDocumentsDto } from "./dto/attach-business-matter-d
 import { CreateBusinessMatterDto } from "./dto/create-business-matter.dto";
 import { ListBusinessMattersDto } from "./dto/list-business-matters.dto";
 import { UpdateBusinessMatterDto } from "./dto/update-business-matter.dto";
+import { CreateBusinessMilestoneDto } from "./dto/create-business-milestone.dto";
+import { CreateBusinessStageDto } from "./dto/create-business-stage.dto";
+import { UpdateBusinessMilestoneDto } from "./dto/update-business-milestone.dto";
+import { UpdateBusinessStageDto } from "./dto/update-business-stage.dto";
+import { calculateProjectProgress, calculateStageProgress, type ProjectProgressSummary } from "./progress-calculator";
 
 const personSelect = { id: true, username: true, realName: true } satisfies Prisma.UserSelect;
 
@@ -106,9 +121,14 @@ export class BusinessMattersService {
       }),
       this.prisma.businessMatter.count({ where }),
     ]);
+    const progressByMatter = await this.progressSummaries(items.map((item) => item.id));
+    const enrichedItems = items.map((item) => ({
+      ...item,
+      progressSummary: progressByMatter.get(item.id) ?? this.emptyProgressSummary(item.status),
+    }));
 
     return {
-      items,
+      items: enrichedItems,
       pagination: {
         page: query.page,
         pageSize: query.pageSize,
@@ -127,6 +147,307 @@ export class BusinessMattersService {
       throw new NotFoundException("事项不存在");
     }
     return matter;
+  }
+
+  async getProjectPlan(id: string) {
+    const matter = await this.requireReadable(id);
+    const [stages, milestones, tasks] = await Promise.all([
+      this.prisma.businessMatterStage.findMany({
+        where: { matterId: id, deletedAt: null },
+        include: { owner: { select: personSelect }, createdBy: { select: personSelect } },
+        orderBy: [{ sort: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.businessMatterMilestone.findMany({
+        where: { matterId: id, deletedAt: null },
+        include: {
+          stage: { select: { id: true, name: true } },
+          owner: { select: personSelect },
+          createdBy: { select: personSelect },
+          completedBy: { select: personSelect },
+        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.businessMatterTask.findMany({
+        where: { matterId: id, deletedAt: null },
+        select: { id: true, title: true, stageId: true, milestoneId: true, progress: true, status: true, dueDate: true },
+        orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+      }),
+    ]);
+    const summary = calculateProjectProgress({
+      status: matter.status,
+      endDate: matter.endDate,
+      stages,
+      milestones,
+      tasks,
+    });
+    return {
+      summary,
+      stages: stages.map((stage) => ({
+        ...stage,
+        calculatedProgress: calculateStageProgress(stage, tasks),
+        taskCount: tasks.filter((task) => task.stageId === stage.id).length,
+      })),
+      milestones,
+      tasks,
+    };
+  }
+
+  async createStage(matterId: string, dto: CreateBusinessStageDto, user: PublicUser) {
+    const matter = await this.requireEditable(matterId, user);
+    const name = this.normalizeText(dto.name, "阶段名称不能为空");
+    const ownerName = this.normalizeOptionalLabel(dto.ownerName);
+    this.validateExclusiveReference("阶段负责人", dto.ownerId, ownerName);
+    await this.ensureReferences({ ownerId: dto.ownerId ?? undefined });
+    this.validateDateRange(dto.startDate, dto.endDate);
+    const status = dto.status ?? BusinessStageStatus.PLANNED;
+    const stage = await this.prisma.businessMatterStage.create({
+      data: {
+        matterId,
+        name,
+        description: this.normalizeOptionalLabel(dto.description),
+        status,
+        progress: status === BusinessStageStatus.COMPLETED ? 100 : dto.progress ?? 0,
+        sort: dto.sort ?? 0,
+        startDate: this.toDate(dto.startDate),
+        endDate: this.toDate(dto.endDate),
+        ownerId: ownerName ? null : dto.ownerId ?? matter.ownerId,
+        ownerName,
+        createdById: user.id,
+      },
+      include: this.stageInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `创建项目阶段“${name}”`, {
+      objectType: "STAGE",
+      objectId: stage.id,
+      snapshot: { name, status, progress: stage.progress, ownerId: stage.ownerId },
+    });
+    return stage;
+  }
+
+  async updateStage(matterId: string, stageId: string, dto: UpdateBusinessStageDto, user: PublicUser) {
+    await this.requireEditable(matterId, user);
+    const stage = await this.requireStage(matterId, stageId);
+    const ownerName = dto.ownerName === undefined ? undefined : this.normalizeOptionalLabel(dto.ownerName);
+    this.validateExclusiveReference("阶段负责人", dto.ownerId, ownerName);
+    if (dto.ownerId) await this.ensureReferences({ ownerId: dto.ownerId });
+    this.validateDateRange(
+      dto.startDate === undefined ? stage.startDate : dto.startDate,
+      dto.endDate === undefined ? stage.endDate : dto.endDate,
+    );
+    const nextStatus = dto.status ?? stage.status;
+    const data: Prisma.BusinessMatterStageUpdateInput = {
+      name: dto.name === undefined ? undefined : this.normalizeText(dto.name, "阶段名称不能为空"),
+      description: dto.description === undefined ? undefined : this.normalizeOptionalLabel(dto.description),
+      status: dto.status,
+      progress: nextStatus === BusinessStageStatus.COMPLETED ? 100 : dto.progress,
+      sort: dto.sort,
+      startDate: dto.startDate === undefined ? undefined : this.toDate(dto.startDate),
+      endDate: dto.endDate === undefined ? undefined : this.toDate(dto.endDate),
+      owner: dto.ownerId !== undefined
+        ? dto.ownerId === null ? { disconnect: true } : { connect: { id: dto.ownerId } }
+        : ownerName !== undefined ? { disconnect: true } : undefined,
+      ownerName: dto.ownerId !== undefined ? null : ownerName,
+    };
+    const updated = await this.prisma.businessMatterStage.update({
+      where: { id: stage.id },
+      data,
+      include: this.stageInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `更新项目阶段“${updated.name}”`, {
+      objectType: "STAGE",
+      objectId: updated.id,
+      changes: this.activityChanges([
+        ["阶段名称", stage.name, updated.name],
+        ["状态", stage.status, updated.status],
+        ["进度", stage.progress, updated.progress],
+        ["负责人", stage.ownerId, updated.ownerId],
+        ["自定义负责人", stage.ownerName, updated.ownerName],
+        ["开始日期", stage.startDate, updated.startDate],
+        ["结束日期", stage.endDate, updated.endDate],
+      ]),
+    });
+    return updated;
+  }
+
+  async removeStage(matterId: string, stageId: string, user: PublicUser) {
+    await this.requireEditable(matterId, user);
+    const stage = await this.requireStage(matterId, stageId);
+    await this.prisma.businessMatterTask.updateMany({ where: { stageId: stage.id }, data: { stageId: null } });
+    await this.prisma.businessMatterMilestone.updateMany({ where: { stageId: stage.id }, data: { stageId: null } });
+    const result = await this.prisma.businessMatterStage.update({ where: { id: stage.id }, data: { deletedAt: new Date() } });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `删除项目阶段“${stage.name}”`, {
+      objectType: "STAGE",
+      objectId: stage.id,
+    });
+    return result;
+  }
+
+  async createMilestone(matterId: string, dto: CreateBusinessMilestoneDto, user: PublicUser) {
+    const matter = await this.requireEditable(matterId, user);
+    await this.validateMilestoneStage(matterId, dto.stageId);
+    const title = this.normalizeText(dto.title, "里程碑名称不能为空");
+    const ownerName = this.normalizeOptionalLabel(dto.ownerName);
+    this.validateExclusiveReference("里程碑负责人", dto.ownerId, ownerName);
+    await this.ensureReferences({ ownerId: dto.ownerId ?? undefined });
+    const milestone = await this.prisma.businessMatterMilestone.create({
+      data: {
+        matterId,
+        stageId: dto.stageId ?? null,
+        title,
+        description: this.normalizeOptionalLabel(dto.description),
+        dueDate: this.toDate(dto.dueDate),
+        ownerId: ownerName ? null : dto.ownerId ?? matter.ownerId,
+        ownerName,
+        createdById: user.id,
+      },
+      include: this.milestoneInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `创建里程碑“${title}”`, {
+      objectType: "MILESTONE",
+      objectId: milestone.id,
+      snapshot: { title, dueDate: this.activityValue(milestone.dueDate), stageId: milestone.stageId },
+    });
+    return milestone;
+  }
+
+  async updateMilestone(matterId: string, milestoneId: string, dto: UpdateBusinessMilestoneDto, user: PublicUser) {
+    await this.requireEditable(matterId, user);
+    const milestone = await this.requireMilestone(matterId, milestoneId);
+    const nextStageId = dto.stageId === undefined ? milestone.stageId : dto.stageId;
+    await this.validateMilestoneStage(matterId, nextStageId);
+    const ownerName = dto.ownerName === undefined ? undefined : this.normalizeOptionalLabel(dto.ownerName);
+    this.validateExclusiveReference("里程碑负责人", dto.ownerId, ownerName);
+    if (dto.ownerId) await this.ensureReferences({ ownerId: dto.ownerId });
+    const nextStatus = dto.status ?? milestone.status;
+    const data: Prisma.BusinessMatterMilestoneUpdateInput = {
+      title: dto.title === undefined ? undefined : this.normalizeText(dto.title, "里程碑名称不能为空"),
+      description: dto.description === undefined ? undefined : this.normalizeOptionalLabel(dto.description),
+      stage: dto.stageId === undefined
+        ? undefined
+        : dto.stageId === null ? { disconnect: true } : { connect: { id: dto.stageId } },
+      status: dto.status,
+      dueDate: dto.dueDate === undefined ? undefined : this.toDate(dto.dueDate),
+      owner: dto.ownerId !== undefined
+        ? dto.ownerId === null ? { disconnect: true } : { connect: { id: dto.ownerId } }
+        : ownerName !== undefined ? { disconnect: true } : undefined,
+      ownerName: dto.ownerId !== undefined ? null : ownerName,
+      completedAt: nextStatus === BusinessMilestoneStatus.COMPLETED
+        ? milestone.completedAt ?? new Date()
+        : null,
+      completedBy: nextStatus === BusinessMilestoneStatus.COMPLETED
+        ? { connect: { id: user.id } }
+        : { disconnect: true },
+    };
+    const updated = await this.prisma.businessMatterMilestone.update({
+      where: { id: milestone.id },
+      data,
+      include: this.milestoneInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `更新里程碑“${updated.title}”`, {
+      objectType: "MILESTONE",
+      objectId: updated.id,
+      changes: this.activityChanges([
+        ["里程碑名称", milestone.title, updated.title],
+        ["状态", milestone.status, updated.status],
+        ["所属阶段", milestone.stageId, updated.stageId],
+        ["截止日期", milestone.dueDate, updated.dueDate],
+        ["负责人", milestone.ownerId, updated.ownerId],
+        ["自定义负责人", milestone.ownerName, updated.ownerName],
+      ]),
+    });
+    return updated;
+  }
+
+  async removeMilestone(matterId: string, milestoneId: string, user: PublicUser) {
+    await this.requireEditable(matterId, user);
+    const milestone = await this.requireMilestone(matterId, milestoneId);
+    await this.prisma.businessMatterTask.updateMany({ where: { milestoneId: milestone.id }, data: { milestoneId: null } });
+    const result = await this.prisma.businessMatterMilestone.update({ where: { id: milestone.id }, data: { deletedAt: new Date() } });
+    await this.logActivity(matterId, user, BusinessActivityAction.MATTER_UPDATED, `删除里程碑“${milestone.title}”`, {
+      objectType: "MILESTONE",
+      objectId: milestone.id,
+    });
+    return result;
+  }
+
+  private async progressSummaries(matterIds: string[]) {
+    const result = new Map<string, ProjectProgressSummary>();
+    if (!matterIds.length) return result;
+    const [matters, stages, milestones, tasks] = await Promise.all([
+      this.prisma.businessMatter.findMany({
+        where: { id: { in: matterIds }, deletedAt: null },
+        select: { id: true, status: true, endDate: true },
+      }),
+      this.prisma.businessMatterStage.findMany({
+        where: { matterId: { in: matterIds }, deletedAt: null },
+        select: { id: true, matterId: true, status: true, progress: true, endDate: true },
+      }),
+      this.prisma.businessMatterMilestone.findMany({
+        where: { matterId: { in: matterIds }, deletedAt: null },
+        select: { matterId: true, status: true, dueDate: true },
+      }),
+      this.prisma.businessMatterTask.findMany({
+        where: { matterId: { in: matterIds }, deletedAt: null },
+        select: { matterId: true, stageId: true, progress: true, status: true, dueDate: true },
+      }),
+    ]);
+    for (const matter of matters) {
+      result.set(matter.id, calculateProjectProgress({
+        status: matter.status,
+        endDate: matter.endDate,
+        stages: stages.filter((stage) => stage.matterId === matter.id),
+        milestones: milestones.filter((milestone) => milestone.matterId === matter.id),
+        tasks: tasks.filter((task) => task.matterId === matter.id),
+      }));
+    }
+    return result;
+  }
+
+  private emptyProgressSummary(status: BusinessMatterStatus): ProjectProgressSummary {
+    return {
+      progress: status === BusinessMatterStatus.COMPLETED ? 100 : 0,
+      health: status === BusinessMatterStatus.COMPLETED ? "COMPLETED" : status === BusinessMatterStatus.CANCELLED ? "CANCELLED" : "NO_PLAN",
+      delayed: false,
+      stageCount: 0,
+      completedStageCount: 0,
+      milestoneCount: 0,
+      completedMilestoneCount: 0,
+      overdueTaskCount: 0,
+      overdueMilestoneCount: 0,
+    };
+  }
+
+  private stageInclude(): Prisma.BusinessMatterStageInclude {
+    return {
+      owner: { select: personSelect },
+      createdBy: { select: personSelect },
+    };
+  }
+
+  private milestoneInclude(): Prisma.BusinessMatterMilestoneInclude {
+    return {
+      stage: { select: { id: true, name: true } },
+      owner: { select: personSelect },
+      createdBy: { select: personSelect },
+      completedBy: { select: personSelect },
+    };
+  }
+
+  private async requireStage(matterId: string, stageId: string) {
+    const stage = await this.prisma.businessMatterStage.findFirst({ where: { id: stageId, matterId, deletedAt: null } });
+    if (!stage) throw new NotFoundException("项目阶段不存在");
+    return stage;
+  }
+
+  private async requireMilestone(matterId: string, milestoneId: string) {
+    const milestone = await this.prisma.businessMatterMilestone.findFirst({ where: { id: milestoneId, matterId, deletedAt: null } });
+    if (!milestone) throw new NotFoundException("里程碑不存在");
+    return milestone;
+  }
+
+  private async validateMilestoneStage(matterId: string, stageId?: string | null) {
+    if (!stageId) return;
+    await this.requireStage(matterId, stageId);
   }
 
   async requireReadable(id: string) {
@@ -331,6 +652,19 @@ export class BusinessMattersService {
       throw new BadRequestException("事项名称不能为空");
     }
     return normalized;
+  }
+
+  private normalizeText(value: string, message: string) {
+    const normalized = value.trim();
+    if (!normalized) throw new BadRequestException(message);
+    return normalized;
+  }
+
+  private toDate(value?: Date | string | null) {
+    if (value === undefined || value === null || value === "") return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) throw new BadRequestException("日期格式无效");
+    return date;
   }
 
   private normalizeOptionalLabel(value: string | null | undefined) {

@@ -18,6 +18,7 @@ import {
   InputNumber,
   List,
   Modal,
+  Progress,
   Select,
   Segmented,
   Space,
@@ -37,6 +38,7 @@ import {
   detachBusinessMatterDocument,
   formatApiError,
   getBusinessMatter,
+  getBusinessProjectPlan,
   listBusinessMatters,
   listDocuments,
   listUsers,
@@ -47,13 +49,16 @@ import type {
   BusinessMatterRecord,
   BusinessMatterStatus,
   BusinessMatterType,
+  BusinessProjectHealth,
   CategoryNode,
   DepartmentRecord,
   DocumentRecord,
   PartnerRecord,
   PublicUser,
   UserRecord,
+  BusinessProjectPlan,
 } from "./types";
+import { BusinessProjectPlanPanel } from "./business-project-plan-panel";
 import { BusinessResponsibilityReportPanel, BusinessWorkflowOverviewPanel, BusinessWorkflowPanel } from "./business-workflow-panel";
 
 const typeLabels: Record<BusinessMatterType, string> = {
@@ -77,6 +82,24 @@ const statusColors: Record<BusinessMatterStatus, string> = {
   IN_PROGRESS: "processing",
   COMPLETED: "success",
   CANCELLED: "default",
+};
+
+const healthLabels: Record<BusinessProjectHealth, string> = {
+  HEALTHY: "正常",
+  AT_RISK: "需关注",
+  DELAYED: "已延期",
+  COMPLETED: "已完成",
+  CANCELLED: "已取消",
+  NO_PLAN: "暂无计划",
+};
+
+const healthColors: Record<BusinessProjectHealth, string> = {
+  HEALTHY: "green",
+  AT_RISK: "gold",
+  DELAYED: "red",
+  COMPLETED: "success",
+  CANCELLED: "default",
+  NO_PLAN: "default",
 };
 
 type ReferenceInputMode = "master" | "custom";
@@ -121,6 +144,7 @@ export function BusinessMattersPage({
   const [type, setType] = useState<BusinessMatterType>();
   const [status, setStatus] = useState<BusinessMatterStatus>();
   const [selectedMatter, setSelectedMatter] = useState<BusinessMatterDetail | null>(null);
+  const [selectedProjectPlan, setSelectedProjectPlan] = useState<BusinessProjectPlan | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deletingMatter, setDeletingMatter] = useState<BusinessMatterRecord | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -208,11 +232,28 @@ export function BusinessMattersPage({
     setDetailLoading(true);
     void loadUsers();
     try {
-      setSelectedMatter(await getBusinessMatter(record.id));
+      const [matter, projectPlan] = await Promise.all([getBusinessMatter(record.id), getBusinessProjectPlan(record.id)]);
+      setSelectedMatter(matter);
+      setSelectedProjectPlan(projectPlan);
     } catch (error) {
       message.error(`事项详情加载失败：${formatApiError(error)}`);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const refreshSelectedProject = async () => {
+    if (!selectedMatter) return;
+    try {
+      const [matter, projectPlan] = await Promise.all([
+        getBusinessMatter(selectedMatter.id),
+        getBusinessProjectPlan(selectedMatter.id),
+      ]);
+      setSelectedMatter(matter);
+      setSelectedProjectPlan(projectPlan);
+      setWorkflowRevision((value) => value + 1);
+    } catch (error) {
+      message.error(`项目进度刷新失败：${formatApiError(error)}`);
     }
   };
 
@@ -445,6 +486,21 @@ export function BusinessMattersPage({
       dataIndex: "status",
       width: 100,
       render: (value: BusinessMatterStatus) => <Tag color={statusColors[value]}>{statusLabels[value]}</Tag>,
+    },
+    {
+      title: "进度",
+      width: 150,
+      render: (_, record) => record.progressSummary ? (
+        <Space direction="vertical" size={2} className="full-width-control">
+          <Progress percent={record.progressSummary.progress} size="small" status={record.progressSummary.health === "DELAYED" ? "exception" : record.progressSummary.health === "COMPLETED" ? "success" : "active"} />
+          <Typography.Text type="secondary">{record.progressSummary.progress}%</Typography.Text>
+        </Space>
+      ) : <Typography.Text type="secondary">-</Typography.Text>,
+    },
+    {
+      title: "健康度",
+      width: 100,
+      render: (_, record) => record.progressSummary ? <Tag color={healthColors[record.progressSummary.health]}>{healthLabels[record.progressSummary.health]}</Tag> : "-",
     },
     {
       title: "负责人",
@@ -858,7 +914,15 @@ export function BusinessMattersPage({
               users={users}
               categories={categories}
               onOpenDocument={onOpenDocument}
-              onChanged={() => setWorkflowRevision((value) => value + 1)}
+              projectPlan={selectedProjectPlan}
+              onChanged={() => void refreshSelectedProject()}
+            />
+            <BusinessProjectPlanPanel
+              matterId={selectedMatter.id}
+              plan={selectedProjectPlan}
+              users={users}
+              currentUser={currentUser}
+              onChanged={() => void refreshSelectedProject()}
             />
           </div>
         )}

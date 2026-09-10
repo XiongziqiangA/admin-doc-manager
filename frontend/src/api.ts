@@ -4,8 +4,11 @@ import type {
   ApiEnvelope,
   ApiList,
   BusinessMatterDetail,
+  BusinessProjectPlan,
   BusinessMatterDocumentLink,
   BusinessMatterRecord,
+  BusinessStageRecord,
+  BusinessMilestoneRecord,
   BusinessActivityRecord,
   BusinessContractRecord,
   BusinessFollowUpRecord,
@@ -135,6 +138,10 @@ export async function getBusinessMatter(id: string) {
   return request<BusinessMatterDetail>({ method: "GET", url: `/business-matters/${id}` });
 }
 
+export async function getBusinessProjectPlan(id: string) {
+  return request<BusinessProjectPlan>({ method: "GET", url: `/business-matters/${id}/project-plan` });
+}
+
 export async function createBusinessMatter(payload: Record<string, unknown>) {
   return request<BusinessMatterRecord>({ method: "POST", url: "/business-matters", data: payload });
 }
@@ -163,6 +170,30 @@ export async function detachBusinessMatterDocument(id: string, documentId: strin
     method: "DELETE",
     url: `/business-matters/${id}/documents/${documentId}`,
   });
+}
+
+export async function createBusinessStage(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessStageRecord>({ method: "POST", url: `/business-matters/${matterId}/stages`, data: payload });
+}
+
+export async function updateBusinessStage(matterId: string, stageId: string, payload: Record<string, unknown>) {
+  return request<BusinessStageRecord>({ method: "PATCH", url: `/business-matters/${matterId}/stages/${stageId}`, data: payload });
+}
+
+export async function deleteBusinessStage(matterId: string, stageId: string) {
+  return request<BusinessStageRecord>({ method: "DELETE", url: `/business-matters/${matterId}/stages/${stageId}` });
+}
+
+export async function createBusinessMilestone(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessMilestoneRecord>({ method: "POST", url: `/business-matters/${matterId}/milestones`, data: payload });
+}
+
+export async function updateBusinessMilestone(matterId: string, milestoneId: string, payload: Record<string, unknown>) {
+  return request<BusinessMilestoneRecord>({ method: "PATCH", url: `/business-matters/${matterId}/milestones/${milestoneId}`, data: payload });
+}
+
+export async function deleteBusinessMilestone(matterId: string, milestoneId: string) {
+  return request<BusinessMilestoneRecord>({ method: "DELETE", url: `/business-matters/${matterId}/milestones/${milestoneId}` });
 }
 
 export async function listBusinessTasks(matterId: string, params: Record<string, string | number | undefined> = {}) {

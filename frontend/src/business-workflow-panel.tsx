@@ -75,6 +75,7 @@ import type {
   BusinessFinanceRecord,
   BusinessFinanceStatus,
   BusinessMatterDetail,
+  BusinessProjectPlan,
   BusinessReminder,
   BusinessResponsibilityReport,
   BusinessResponsibilityReportItem,
@@ -159,6 +160,8 @@ interface TaskFormValues {
   assigneeName?: string;
   completionNote?: string;
   cancellationReason?: string;
+  stageId?: string;
+  milestoneId?: string;
 }
 
 interface FollowUpFormValues {
@@ -462,6 +465,7 @@ interface BusinessWorkflowPanelProps {
   users: UserRecord[];
   categories: CategoryNode[];
   onOpenDocument: (document: DocumentRecord) => void;
+  projectPlan: BusinessProjectPlan | null;
   onChanged: () => void;
 }
 
@@ -471,6 +475,7 @@ export function BusinessWorkflowPanel({
   users,
   categories,
   onOpenDocument,
+  projectPlan,
   onChanged,
 }: BusinessWorkflowPanelProps) {
   const [tasks, setTasks] = useState<BusinessTaskRecord[]>([]);
@@ -515,6 +520,7 @@ export function BusinessWorkflowPanel({
   const [financeForm] = Form.useForm<FinanceFormValues>();
   const [contractForm] = Form.useForm<ContractFormValues>();
   const taskStatusValue = Form.useWatch("status", taskForm);
+  const taskStageIdValue = Form.useWatch("stageId", taskForm);
   const financeStatusValue = Form.useWatch("status", financeForm);
 
   const isAdmin = currentUser.role === "ADMIN";
@@ -615,6 +621,8 @@ export function BusinessWorkflowPanel({
       dueDate: task.dueDate?.slice(0, 10),
       assigneeId: task.assigneeId ?? undefined,
       assigneeName: task.assigneeName ?? undefined,
+      stageId: task.stageId ?? undefined,
+      milestoneId: task.milestoneId ?? undefined,
       completionNote: task.completionNote ?? undefined,
       cancellationReason: task.cancellationReason ?? undefined,
     } : { status: "TODO", priority: "NORMAL", assigneeId: matter.ownerId });
@@ -645,6 +653,8 @@ export function BusinessWorkflowPanel({
         dueDate: values.dueDate || null,
         completionNote: values.completionNote?.trim() || null,
         cancellationReason: values.cancellationReason?.trim() || null,
+        stageId: values.stageId || null,
+        milestoneId: values.milestoneId || null,
         ...(taskAssigneeMode === "custom"
           ? { assigneeId: null, assigneeName: values.assigneeName?.trim() || null }
           : isAdmin
@@ -1262,6 +1272,8 @@ export function BusinessWorkflowPanel({
             <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={taskStatusOptions(editingTask ?? undefined)} /></Form.Item>
             <Form.Item name="priority" label="优先级" rules={[{ required: true }]}><Select options={Object.entries(priorityLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
             <Form.Item name="dueDate" label="截止日期"><Input type="date" /></Form.Item>
+            <Form.Item name="stageId" label="所属阶段"><Select allowClear options={(projectPlan?.stages ?? []).map((stage) => ({ value: stage.id, label: stage.name }))} /></Form.Item>
+            <Form.Item name="milestoneId" label="所属里程碑"><Select allowClear options={(projectPlan?.milestones ?? []).filter((milestone) => !taskStageIdValue || !milestone.stageId || milestone.stageId === taskStageIdValue).map((milestone) => ({ value: milestone.id, label: milestone.title }))} /></Form.Item>
             <div className="business-workflow-reference-field">
               <Typography.Text strong>负责人</Typography.Text>
               <Segmented

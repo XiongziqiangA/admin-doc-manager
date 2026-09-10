@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 
 import { CurrentUser } from "../auth/current-user.decorator";
@@ -10,6 +10,10 @@ import { AttachBusinessMatterDocumentsDto } from "./dto/attach-business-matter-d
 import { CreateBusinessMatterDto } from "./dto/create-business-matter.dto";
 import { ListBusinessMattersDto } from "./dto/list-business-matters.dto";
 import { UpdateBusinessMatterDto } from "./dto/update-business-matter.dto";
+import { CreateBusinessMilestoneDto } from "./dto/create-business-milestone.dto";
+import { CreateBusinessStageDto } from "./dto/create-business-stage.dto";
+import { UpdateBusinessMilestoneDto } from "./dto/update-business-milestone.dto";
+import { UpdateBusinessStageDto } from "./dto/update-business-stage.dto";
 
 @ApiTags("business-matters")
 @ApiBearerAuth()
@@ -26,6 +30,11 @@ export class BusinessMattersController {
   @Post()
   create(@Body() dto: CreateBusinessMatterDto, @CurrentUser() user: PublicUser) {
     return this.businessMattersService.create(dto, user);
+  }
+
+  @Get(":id/project-plan")
+  getProjectPlan(@Param("id") id: string) {
+    return this.businessMattersService.getProjectPlan(id);
   }
 
   @Get(":id")
@@ -55,5 +64,35 @@ export class BusinessMattersController {
   @Delete(":id/documents/:documentId")
   detachDocument(@Param("id") id: string, @Param("documentId") documentId: string, @CurrentUser() user: PublicUser) {
     return this.businessMattersService.detachDocument(id, documentId, user);
+  }
+
+  @Post(":id/stages")
+  createStage(@Param("id") id: string, @Body() dto: CreateBusinessStageDto, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.createStage(id, dto, user);
+  }
+
+  @Patch(":id/stages/:stageId")
+  updateStage(@Param("id") id: string, @Param("stageId") stageId: string, @Body() dto: UpdateBusinessStageDto, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.updateStage(id, stageId, dto, user);
+  }
+
+  @Delete(":id/stages/:stageId")
+  removeStage(@Param("id") id: string, @Param("stageId") stageId: string, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.removeStage(id, stageId, user);
+  }
+
+  @Post(":id/milestones")
+  createMilestone(@Param("id") id: string, @Body() dto: CreateBusinessMilestoneDto, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.createMilestone(id, dto, user);
+  }
+
+  @Patch(":id/milestones/:milestoneId")
+  updateMilestone(@Param("id") id: string, @Param("milestoneId") milestoneId: string, @Body() dto: UpdateBusinessMilestoneDto, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.updateMilestone(id, milestoneId, dto, user);
+  }
+
+  @Delete(":id/milestones/:milestoneId")
+  removeMilestone(@Param("id") id: string, @Param("milestoneId") milestoneId: string, @CurrentUser() user: PublicUser) {
+    return this.businessMattersService.removeMilestone(id, milestoneId, user);
   }
 }

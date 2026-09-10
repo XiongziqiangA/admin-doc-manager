@@ -44,6 +44,16 @@ export class UpdateBusinessTaskDto {
   @MaxLength(200)
   assigneeName?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "所属项目阶段" })
+  @IsOptional()
+  @IsString()
+  stageId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "所属项目里程碑" })
+  @IsOptional()
+  @IsString()
+  milestoneId?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsDateString()
