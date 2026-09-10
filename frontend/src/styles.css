@@ -222,7 +222,149 @@ body {
   gap: 22px;
 }
 
-.business-matter-detail-actions,
+.business-matter-detail-shell {
+  min-width: 0;
+}
+
+.business-matter-detail-header {
+  position: sticky;
+  z-index: 6;
+  top: -24px;
+  margin: -24px -24px 0;
+  padding: 16px 24px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: rgb(255 255 255 / 96%);
+  backdrop-filter: blur(8px);
+}
+
+.business-matter-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.business-matter-detail-title-group {
+  min-width: 0;
+}
+
+.business-matter-detail-title-group .ant-typography {
+  margin: 0 0 6px !important;
+}
+
+.business-matter-detail-title-group .ant-typography-secondary {
+  margin: 0 !important;
+  font-size: 12px;
+}
+
+.business-matter-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 12px;
+}
+
+.business-matter-detail-tabs {
+  min-width: 0;
+  margin-top: 12px;
+}
+
+.business-matter-detail-tabs > .ant-tabs-nav {
+  position: sticky;
+  z-index: 5;
+  top: 98px;
+  margin-bottom: 20px;
+  padding: 4px 0 0;
+  background: #fff;
+}
+
+.business-matter-detail-tabs > .ant-tabs-nav .ant-tabs-tab {
+  padding: 10px 4px;
+}
+
+.business-matter-detail-tabs > .ant-tabs-content-holder {
+  min-width: 0;
+}
+
+.business-matter-overview,
+.business-detail-module {
+  min-width: 0;
+}
+
+.business-matter-overview-metrics {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.business-matter-overview-metric {
+  display: flex;
+  min-width: 0;
+  min-height: 82px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.business-matter-overview-metric .ant-typography {
+  margin: 0 !important;
+}
+
+.business-matter-overview-metric .ant-progress {
+  margin: 0;
+}
+
+.business-matter-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 24px;
+}
+
+.business-detail-section {
+  min-width: 0;
+  padding-top: 16px;
+  border-top: 2px solid #e5e7eb;
+}
+
+.business-detail-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.business-detail-section-heading .ant-typography {
+  margin: 0 !important;
+}
+
+.business-detail-section-heading .ant-typography + .ant-typography {
+  display: block;
+  margin-top: 4px !important;
+}
+
+.business-matter-parent-summary {
+  margin: 0 0 12px !important;
+  padding: 10px 12px;
+  border-left: 3px solid #91caff;
+  background: #f0f7ff;
+}
+
+.business-detail-empty-state {
+  padding: 48px 16px;
+  border: 1px dashed #d9d9d9;
+  background: #fafafa;
+}
+
+.business-matter-document-list {
+  min-width: 0;
+}
+
 .business-matter-section-heading {
   display: flex;
   align-items: center;
@@ -1349,6 +1491,39 @@ body {
   .business-workflow-form-grid,
   .business-matter-reference-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .business-matter-detail-header {
+    margin-right: -16px;
+    margin-left: -16px;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .business-matter-detail-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .business-matter-detail-heading > .ant-space {
+    justify-content: flex-start;
+  }
+
+  .business-matter-detail-tabs > .ant-tabs-nav {
+    top: 136px;
+    overflow-x: auto;
+  }
+
+  .business-matter-detail-tabs > .ant-tabs-nav .ant-tabs-nav-wrap {
+    overflow: visible;
+  }
+
+  .business-matter-overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .business-matter-overview-grid {
+    grid-template-columns: 1fr;
   }
 
   .business-project-plan-columns {

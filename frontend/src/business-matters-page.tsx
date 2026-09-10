@@ -1,11 +1,16 @@
 import {
+  ApartmentOutlined,
+  BarChartOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
+  FolderOpenOutlined,
+  InfoCircleOutlined,
   LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -24,6 +29,7 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -149,6 +155,7 @@ export function BusinessMattersPage({
   const [boardLoading, setBoardLoading] = useState(false);
   const [selectedMatter, setSelectedMatter] = useState<BusinessMatterDetail | null>(null);
   const [selectedProjectPlan, setSelectedProjectPlan] = useState<BusinessProjectPlan | null>(null);
+  const [detailTab, setDetailTab] = useState("overview");
   const [detailLoading, setDetailLoading] = useState(false);
   const [deletingMatter, setDeletingMatter] = useState<BusinessMatterRecord | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -268,6 +275,7 @@ export function BusinessMattersPage({
 
   const openDetail = async (record: BusinessMatterRecord) => {
     setDetailLoading(true);
+    setDetailTab("overview");
     void loadUsers();
     try {
       const [matter, projectPlan] = await Promise.all([getBusinessMatter(record.id), getBusinessProjectPlan(record.id)]);
@@ -854,9 +862,9 @@ export function BusinessMattersPage({
       </Modal>
 
       <Drawer
-        title={selectedMatter ? `${selectedMatter.title} · 事项详情` : "事项详情"}
+        title={null}
         open={Boolean(selectedMatter)}
-        width={760}
+        width="min(1180px, calc(100vw - 32px))"
         onClose={() => setSelectedMatter(null)}
       >
         {detailLoading || !selectedMatter ? (
@@ -864,121 +872,113 @@ export function BusinessMattersPage({
             <Spin />
           </div>
         ) : (
-          <div className="business-matter-detail-stack">
-            <div className="business-matter-detail-actions">
-              <Space>
-                <Button icon={<EditOutlined />} onClick={() => openEdit(selectedMatter)}>
-                  编辑事项
-                </Button>
-                <Button type="primary" icon={<LinkOutlined />} onClick={openAttach}>
-                  关联文件
-                </Button>
-              </Space>
-            </div>
-            <Descriptions bordered size="small" column={2}>
-              <Descriptions.Item label="事项编号">{selectedMatter.matterNo}</Descriptions.Item>
-              <Descriptions.Item label="事项类型">{typeLabels[selectedMatter.type]}</Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={statusColors[selectedMatter.status]}>{statusLabels[selectedMatter.status]}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="负责人">
-                {selectedMatter.ownerName || selectedMatter.owner?.realName || selectedMatter.owner?.username || "-"}
-              </Descriptions.Item>
-              <Descriptions.Item label="所属部门">{selectedMatter.departmentName || selectedMatter.department?.name || "-"}</Descriptions.Item>
-              <Descriptions.Item label="合作单位">{selectedMatter.partnerName || selectedMatter.partner?.companyName || "-"}</Descriptions.Item>
-              <Descriptions.Item label="开始日期">{formatDateOnly(selectedMatter.startDate)}</Descriptions.Item>
-              <Descriptions.Item label="结束日期">{formatDateOnly(selectedMatter.endDate)}</Descriptions.Item>
-              <Descriptions.Item label="事项金额">{formatAmount(selectedMatter.amount)}</Descriptions.Item>
-              <Descriptions.Item label="创建时间">{formatDate(selectedMatter.createdAt)}</Descriptions.Item>
-              <Descriptions.Item label="备注" span={2}>
-                {selectedMatter.remark || "-"}
-              </Descriptions.Item>
-            </Descriptions>
-
-            <section>
-              <div className="business-matter-section-heading">
-                <Typography.Title level={4}>上下级事项</Typography.Title>
+          <div className="business-matter-detail-shell">
+            <div className="business-matter-detail-header">
+              <div className="business-matter-detail-heading">
+                <div className="business-matter-detail-title-group">
+                  <Typography.Title level={3}>{selectedMatter.title}</Typography.Title>
+                  <Space wrap size={[6, 4]}>
+                    <Tag>{typeLabels[selectedMatter.type]}</Tag>
+                    <Tag color={statusColors[selectedMatter.status]}>{statusLabels[selectedMatter.status]}</Tag>
+                    {selectedProjectPlan ? (
+                      <Tag color={healthColors[selectedProjectPlan.summary.health]}>
+                        {healthLabels[selectedProjectPlan.summary.health]}
+                      </Tag>
+                    ) : null}
+                    <Typography.Text type="secondary">{selectedMatter.matterNo}</Typography.Text>
+                  </Space>
+                </div>
+                <Space wrap>
+                  <Button icon={<EditOutlined />} onClick={() => openEdit(selectedMatter)}>
+                    编辑事项
+                  </Button>
+                  <Button type="primary" icon={<LinkOutlined />} onClick={openAttach}>
+                    关联文件
+                  </Button>
+                </Space>
+              </div>
+              <div className="business-matter-detail-meta">
                 <Typography.Text type="secondary">
-                  上级：{selectedMatter.parent?.title || "顶级事项"} · 子事项 {selectedMatter.children.length} 个
+                  负责人：{selectedMatter.ownerName || selectedMatter.owner?.realName || selectedMatter.owner?.username || "未指定"}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  部门：{selectedMatter.departmentName || selectedMatter.department?.name || "未指定"}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  合作单位：{selectedMatter.partnerName || selectedMatter.partner?.companyName || "未指定"}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  周期：{formatDateOnly(selectedMatter.startDate)} 至 {formatDateOnly(selectedMatter.endDate)}
                 </Typography.Text>
               </div>
-              {selectedMatter.children.length ? (
-                <List
-                  size="small"
-                  bordered
-                  dataSource={selectedMatter.children}
-                  renderItem={(child) => (
-                    <List.Item>
-                      <Space>
-                        <Typography.Text strong>{child.title}</Typography.Text>
-                        <Tag>{typeLabels[child.type]}</Tag>
-                        <Tag color={statusColors[child.status]}>{statusLabels[child.status]}</Tag>
-                      </Space>
-                    </List.Item>
-                  )}
-                />
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无子事项" />
-              )}
-            </section>
+            </div>
 
-            <section>
-              <div className="business-matter-section-heading">
-                <Typography.Title level={4}>关联文件</Typography.Title>
-                <Typography.Text type="secondary">{selectedMatter.documents.length} 份文件</Typography.Text>
-              </div>
-              {selectedMatter.documents.length ? (
-                <List
-                  bordered
-                  dataSource={selectedMatter.documents}
-                  renderItem={(link) => (
-                    <List.Item
-                      actions={[
-                        <Button key="view" type="link" onClick={() => onOpenDocument(link.document)}>
-                          查看详情
-                        </Button>,
-                        <Button key="detach" type="link" danger onClick={() => detachDocument(link.document)}>
-                          取消关联
-                        </Button>,
-                      ]}
-                    >
-                      <List.Item.Meta
-                        avatar={<FileTextOutlined />}
-                        title={link.document.title}
-                        description={`${link.document.documentNo} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"} · 来源：${getDocumentCategoryPathText(link.document)}`}
-                      />
-                    </List.Item>
-                  )}
-                />
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未关联文件" />
-              )}
-            </section>
-
-            <BusinessWorkflowPanel
-              matter={selectedMatter}
-              currentUser={currentUser}
-              users={users}
-              categories={categories}
-              onOpenDocument={onOpenDocument}
-              projectPlan={selectedProjectPlan}
-              onChanged={() => void refreshSelectedProject()}
-            />
-            <BusinessProjectPlanPanel
-              matter={selectedMatter}
-              matterId={selectedMatter.id}
-              plan={selectedProjectPlan}
-              users={users}
-              currentUser={currentUser}
-              onChanged={() => void refreshSelectedProject()}
-            />
-            <BusinessIssuesPanel
-              matter={selectedMatter}
-              currentUser={currentUser}
-              users={users}
-              categories={categories}
-              onOpenDocument={onOpenDocument}
-              onChanged={() => void refreshSelectedProject()}
+            <Tabs
+              className="business-matter-detail-tabs"
+              activeKey={detailTab}
+              onChange={setDetailTab}
+              items={[
+                {
+                  key: "overview",
+                  label: <span><InfoCircleOutlined /> 概览</span>,
+                  children: <MatterOverviewPanel matter={selectedMatter} plan={selectedProjectPlan} />,
+                },
+                {
+                  key: "documents",
+                  label: <span><FolderOpenOutlined /> 文件资料 {selectedMatter.documents.length ? `(${selectedMatter.documents.length})` : ""}</span>,
+                  children: (
+                    <MatterDocumentsPanel
+                      matter={selectedMatter}
+                      onOpenDocument={onOpenDocument}
+                      onOpenAttach={openAttach}
+                      onDetach={detachDocument}
+                    />
+                  ),
+                },
+                {
+                  key: "plan",
+                  label: <span><BarChartOutlined /> 项目进度</span>,
+                  children: (
+                    <BusinessProjectPlanPanel
+                      matter={selectedMatter}
+                      matterId={selectedMatter.id}
+                      plan={selectedProjectPlan}
+                      users={users}
+                      currentUser={currentUser}
+                      onChanged={() => void refreshSelectedProject()}
+                    />
+                  ),
+                },
+                {
+                  key: "workflow",
+                  label: <span><ApartmentOutlined /> 业务跟踪</span>,
+                  children: (
+                    <BusinessWorkflowPanel
+                      matter={selectedMatter}
+                      currentUser={currentUser}
+                      users={users}
+                      categories={categories}
+                      onOpenDocument={onOpenDocument}
+                      projectPlan={selectedProjectPlan}
+                      onChanged={() => void refreshSelectedProject()}
+                    />
+                  ),
+                },
+                {
+                  key: "issues",
+                  label: <span><WarningOutlined /> 风险与问题</span>,
+                  children: (
+                    <BusinessIssuesPanel
+                      matter={selectedMatter}
+                      currentUser={currentUser}
+                      users={users}
+                      categories={categories}
+                      onOpenDocument={onOpenDocument}
+                      onChanged={() => void refreshSelectedProject()}
+                    />
+                  ),
+                },
+              ]}
             />
           </div>
         )}
@@ -1025,6 +1025,147 @@ export function BusinessMattersPage({
         </Space>
       </Modal>
     </div>
+  );
+}
+
+function MatterOverviewPanel({
+  matter,
+  plan,
+}: {
+  matter: BusinessMatterDetail;
+  plan: BusinessProjectPlan | null;
+}) {
+  const summary = plan?.summary;
+  return (
+    <div className="business-matter-overview">
+      <div className="business-matter-overview-metrics" aria-label="事项关键指标">
+        <div className="business-matter-overview-metric">
+          <Typography.Text type="secondary">整体进度</Typography.Text>
+          {summary ? (
+            <>
+              <Progress percent={summary.progress} size="small" status={summary.health === "DELAYED" ? "exception" : summary.health === "COMPLETED" ? "success" : "active"} />
+              <Typography.Text strong>{summary.progress}%</Typography.Text>
+            </>
+          ) : <Typography.Text type="secondary">加载中</Typography.Text>}
+        </div>
+        <div className="business-matter-overview-metric">
+          <Typography.Text type="secondary">项目健康度</Typography.Text>
+          {summary ? <Tag color={healthColors[summary.health]}>{healthLabels[summary.health]}</Tag> : <Typography.Text type="secondary">加载中</Typography.Text>}
+        </div>
+        <div className="business-matter-overview-metric">
+          <Typography.Text type="secondary">关联文件</Typography.Text>
+          <Typography.Title level={4}>{matter.documents.length}<Typography.Text type="secondary"> 份</Typography.Text></Typography.Title>
+        </div>
+        <div className="business-matter-overview-metric">
+          <Typography.Text type="secondary">子事项</Typography.Text>
+          <Typography.Title level={4}>{matter.children.length}<Typography.Text type="secondary"> 项</Typography.Text></Typography.Title>
+        </div>
+      </div>
+
+      <div className="business-matter-overview-grid">
+        <section className="business-detail-section">
+          <div className="business-detail-section-heading">
+            <div>
+              <Typography.Title level={4}>基本信息</Typography.Title>
+              <Typography.Text type="secondary">事项的基础属性和归属信息</Typography.Text>
+            </div>
+          </div>
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="事项编号">{matter.matterNo}</Descriptions.Item>
+            <Descriptions.Item label="事项类型">{typeLabels[matter.type]}</Descriptions.Item>
+            <Descriptions.Item label="状态"><Tag color={statusColors[matter.status]}>{statusLabels[matter.status]}</Tag></Descriptions.Item>
+            <Descriptions.Item label="负责人">{matter.ownerName || matter.owner?.realName || matter.owner?.username || "-"}</Descriptions.Item>
+            <Descriptions.Item label="所属部门">{matter.departmentName || matter.department?.name || "-"}</Descriptions.Item>
+            <Descriptions.Item label="合作单位">{matter.partnerName || matter.partner?.companyName || "-"}</Descriptions.Item>
+            <Descriptions.Item label="开始日期">{formatDateOnly(matter.startDate)}</Descriptions.Item>
+            <Descriptions.Item label="结束日期">{formatDateOnly(matter.endDate)}</Descriptions.Item>
+            <Descriptions.Item label="事项金额">{formatAmount(matter.amount)}</Descriptions.Item>
+            <Descriptions.Item label="创建时间">{formatDate(matter.createdAt)}</Descriptions.Item>
+            <Descriptions.Item label="备注" span={2}>{matter.remark || "-"}</Descriptions.Item>
+          </Descriptions>
+        </section>
+
+        <section className="business-detail-section">
+          <div className="business-detail-section-heading">
+            <div>
+              <Typography.Title level={4}>上下级事项</Typography.Title>
+              <Typography.Text type="secondary">查看当前事项在业务层级中的位置</Typography.Text>
+            </div>
+            <Typography.Text type="secondary">子事项 {matter.children.length} 项</Typography.Text>
+          </div>
+          <Typography.Paragraph className="business-matter-parent-summary">
+            上级事项：{matter.parent?.title || "顶级事项"}
+          </Typography.Paragraph>
+          {matter.children.length ? (
+            <List
+              size="small"
+              bordered
+              dataSource={matter.children}
+              renderItem={(child) => (
+                <List.Item>
+                  <Space wrap>
+                    <Typography.Text strong>{child.title}</Typography.Text>
+                    <Tag>{typeLabels[child.type]}</Tag>
+                    <Tag color={statusColors[child.status]}>{statusLabels[child.status]}</Tag>
+                  </Space>
+                </List.Item>
+              )}
+            />
+          ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无子事项" />}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function MatterDocumentsPanel({
+  matter,
+  onOpenDocument,
+  onOpenAttach,
+  onDetach,
+}: {
+  matter: BusinessMatterDetail;
+  onOpenDocument: (document: DocumentRecord) => void;
+  onOpenAttach: () => void;
+  onDetach: (document: DocumentRecord) => void;
+}) {
+  return (
+    <section className="business-detail-module">
+      <div className="business-detail-section-heading">
+        <div>
+          <Typography.Title level={4}>文件资料</Typography.Title>
+          <Typography.Text type="secondary">集中查看和维护当前事项关联的行政文件与历史版本。</Typography.Text>
+        </div>
+        <Button type="primary" icon={<LinkOutlined />} onClick={onOpenAttach}>关联文件</Button>
+      </div>
+      {matter.documents.length ? (
+        <List
+          className="business-matter-document-list"
+          bordered
+          dataSource={matter.documents}
+          renderItem={(link) => (
+            <List.Item
+              actions={[
+                <Button key="view" type="link" onClick={() => onOpenDocument(link.document)}>查看详情</Button>,
+                <Button key="detach" type="link" danger onClick={() => onDetach(link.document)}>取消关联</Button>,
+              ]}
+            >
+              <List.Item.Meta
+                avatar={<FileTextOutlined />}
+                title={link.document.title}
+                description={`${link.document.documentNo} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"} · 来源：${getDocumentCategoryPathText(link.document)}`}
+              />
+            </List.Item>
+          )}
+        />
+      ) : (
+        <div className="business-detail-empty-state">
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未关联文件">
+            <Button type="primary" icon={<LinkOutlined />} onClick={onOpenAttach}>关联第一份文件</Button>
+          </Empty>
+        </div>
+      )}
+    </section>
   );
 }
 
