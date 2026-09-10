@@ -272,6 +272,17 @@ export interface BusinessMatterDocumentLink {
   version?: DocumentVersionRecord | null;
 }
 
+export interface BusinessWorkflowDocumentLink {
+  taskId?: string;
+  followUpId?: string;
+  documentId: string;
+  versionId: string | null;
+  relationType: string;
+  createdAt: string;
+  document: DocumentRecord;
+  version?: DocumentVersionRecord | null;
+}
+
 export interface BusinessMatterDetail extends BusinessMatterRecord {
   children: BusinessMatterChild[];
   documents: BusinessMatterDocumentLink[];
@@ -294,6 +305,7 @@ export interface BusinessTaskRecord {
   cancelledById: string | null;
   cancellationReason: string | null;
   assigneeId: string | null;
+  assigneeName: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
@@ -301,6 +313,7 @@ export interface BusinessTaskRecord {
   createdBy?: BusinessMatterPerson;
   completedBy?: BusinessMatterPerson | null;
   cancelledBy?: BusinessMatterPerson | null;
+  documents: BusinessWorkflowDocumentLink[];
 }
 
 export interface BusinessFollowUpRecord {
@@ -311,12 +324,14 @@ export interface BusinessFollowUpRecord {
   result: string | null;
   nextAction: string | null;
   nextAssigneeId: string | null;
+  nextAssigneeName: string | null;
   nextDueAt: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: BusinessMatterPerson;
   nextAssignee?: BusinessMatterPerson | null;
+  documents: BusinessWorkflowDocumentLink[];
 }
 
 export interface BusinessContractRecord {
@@ -357,10 +372,15 @@ export interface BusinessFinanceRecord {
   amount: string;
   currency: string;
   applicantId: string | null;
+  applicantName: string | null;
   handlerId: string | null;
+  handlerName: string | null;
   approverId: string | null;
+  approverName: string | null;
   payerId: string | null;
+  payerName: string | null;
   settlementOwnerId: string | null;
+  settlementOwnerName: string | null;
   occurredAt: string | null;
   counterparty: string | null;
   dueDate: string | null;

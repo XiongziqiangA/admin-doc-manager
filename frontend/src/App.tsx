@@ -2061,6 +2061,7 @@ export default function App() {
               currentUser={user}
               departments={departments}
               partners={partners}
+              categories={categories}
               onOpenDocument={openDocumentDetail}
             />
           ) : page === "finance" ? (

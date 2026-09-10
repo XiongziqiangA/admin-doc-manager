@@ -28,6 +28,7 @@ describe("BusinessWorkflowService", () => {
     },
     businessMatterFollowUp: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
       groupBy: vi.fn(),
@@ -49,6 +50,18 @@ describe("BusinessWorkflowService", () => {
       groupBy: vi.fn(),
     },
     businessMatterFinanceDocument: {
+      findMany: vi.fn(),
+      createMany: vi.fn(),
+      findFirst: vi.fn(),
+      delete: vi.fn(),
+    },
+    businessMatterTaskDocument: {
+      findMany: vi.fn(),
+      createMany: vi.fn(),
+      findFirst: vi.fn(),
+      delete: vi.fn(),
+    },
+    businessMatterFollowUpDocument: {
       findMany: vi.fn(),
       createMany: vi.fn(),
       findFirst: vi.fn(),
@@ -136,6 +149,36 @@ describe("BusinessWorkflowService", () => {
     );
   });
 
+  it("stores a custom task assignee without binding a system account", async () => {
+    prisma.businessMatterTask.create.mockResolvedValue({
+      id: "task-custom",
+      title: "联系外部顾问",
+      status: BusinessTaskStatus.TODO,
+      assigneeId: null,
+      assigneeName: "外部顾问李老师",
+    });
+
+    await service.createTask("matter-1", {
+      title: "联系外部顾问",
+      assigneeName: " 外部顾问李老师 ",
+    }, user);
+
+    expect(prisma.businessMatterTask.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assigneeId: null, assigneeName: "外部顾问李老师" }),
+      }),
+    );
+  });
+
+  it("rejects a task with both an account and a custom assignee", async () => {
+    await expect(service.createTask("matter-1", {
+      title: "重复责任人",
+      assigneeId: user.id,
+      assigneeName: "外部负责人",
+    }, user)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterTask.create).not.toHaveBeenCalled();
+  });
+
   it("requires a next assignee when a next follow-up date is provided", async () => {
     await expect(
       service.createFollowUp(
@@ -206,6 +249,29 @@ describe("BusinessWorkflowService", () => {
           action: "FOLLOW_UP_CREATED",
           summary: "记录一次会议跟进",
         }),
+      }),
+    );
+  });
+
+  it("allows a custom next follow-up assignee when a due date is provided", async () => {
+    prisma.businessMatterFollowUp.create.mockResolvedValue({
+      id: "follow-up-custom",
+      content: "等待外部人员反馈",
+      nextAssigneeId: null,
+      nextAssigneeName: "代账公司李老师",
+      nextDueAt: new Date("2026-09-20T09:00:00.000Z"),
+    });
+
+    await service.createFollowUp("matter-1", {
+      method: BusinessFollowUpMethod.EMAIL,
+      content: "等待外部人员反馈",
+      nextAssigneeName: "代账公司李老师",
+      nextDueAt: "2026-09-20T09:00:00.000Z",
+    }, user);
+
+    expect(prisma.businessMatterFollowUp.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ nextAssigneeId: null, nextAssigneeName: "代账公司李老师" }),
       }),
     );
   });
@@ -447,6 +513,107 @@ describe("BusinessWorkflowService", () => {
     );
   });
 
+  it("stores custom names for every finance responsibility role", async () => {
+    prisma.businessMatterFinanceRecord.create.mockResolvedValue({
+      id: "finance-custom",
+      title: "外部代办报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.DRAFT,
+    });
+
+    await service.createFinanceRecord("matter-1", {
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      title: "外部代办报销",
+      amount: 88,
+      applicantName: "申请人甲",
+      handlerName: "经办人乙",
+      approverName: "审批人丙",
+      payerName: "付款人丁",
+      settlementOwnerName: "结算人戊",
+    }, user);
+
+    expect(prisma.businessMatterFinanceRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          applicantId: null,
+          applicantName: "申请人甲",
+          handlerId: null,
+          handlerName: "经办人乙",
+          approverId: null,
+          approverName: "审批人丙",
+          payerId: null,
+          payerName: "付款人丁",
+          settlementOwnerId: null,
+          settlementOwnerName: "结算人戊",
+        }),
+      }),
+    );
+  });
+
+  it("does not allow a custom approver name to authorize approval for an employee", async () => {
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      title: "外部审批报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.PENDING,
+      approverId: null,
+      approverName: "外部审批人",
+    });
+
+    await expect(service.updateFinanceRecord("matter-1", "finance-1", {
+      status: BusinessFinanceStatus.APPROVED,
+    }, user)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterFinanceRecord.update).not.toHaveBeenCalled();
+  });
+
+  it("can switch an existing finance responsibility from an account to a custom person", async () => {
+    const admin = { ...user, role: UserRole.ADMIN };
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      recordNo: "REIM-1",
+      title: "切换责任人",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.DRAFT,
+      approverId: user.id,
+      approverName: null,
+      amount: "20.00",
+      currency: "CNY",
+      dueDate: null,
+      settledAt: null,
+      rejectionReason: null,
+      settlementNote: null,
+    });
+    prisma.businessMatterFinanceRecord.update.mockResolvedValue({
+      id: "finance-1",
+      recordNo: "REIM-1",
+      title: "切换责任人",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.DRAFT,
+      approverId: null,
+      approverName: "外部审批人",
+      amount: "20.00",
+      currency: "CNY",
+      dueDate: null,
+      settledAt: null,
+      rejectionReason: null,
+      settlementNote: null,
+    });
+
+    await service.updateFinanceRecord("matter-1", "finance-1", {
+      approverId: null,
+      approverName: "外部审批人",
+    }, admin);
+
+    expect(prisma.businessMatterFinanceRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          approver: { disconnect: true },
+          approverName: "外部审批人",
+        }),
+      }),
+    );
+  });
+
   it("records the responsible people and timestamps when finance status advances", async () => {
     prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
       id: "finance-1",
@@ -581,5 +748,42 @@ describe("BusinessWorkflowService", () => {
     await expect(
       service.attachFinanceDocuments("matter-1", "finance-1", { documentIds: ["document-1"] }, user),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("attaches and detaches task documents without deleting the source document", async () => {
+    prisma.businessMatterTask.findFirst.mockResolvedValue({ id: "task-1", title: "整理材料" });
+    prisma.document.findMany.mockResolvedValue([{ id: "document-1", currentVersionId: "version-1" }]);
+    prisma.businessMatterTaskDocument.findMany.mockResolvedValue([]);
+    prisma.businessMatterTaskDocument.createMany.mockResolvedValue({ count: 1 });
+
+    await service.attachTaskDocuments("matter-1", "task-1", { documentIds: ["document-1"] }, user);
+
+    expect(prisma.businessMatterTaskDocument.createMany).toHaveBeenCalledWith({
+      data: [{ taskId: "task-1", documentId: "document-1", versionId: "version-1", relationType: "ATTACHMENT" }],
+    });
+
+    prisma.businessMatterTaskDocument.findFirst.mockResolvedValue({ taskId: "task-1", documentId: "document-1" });
+    prisma.businessMatterTaskDocument.delete.mockResolvedValue({ taskId: "task-1", documentId: "document-1" });
+    await service.detachTaskDocument("matter-1", "task-1", "document-1", user);
+
+    expect(prisma.businessMatterTaskDocument.delete).toHaveBeenCalledWith({
+      where: { taskId_documentId: { taskId: "task-1", documentId: "document-1" } },
+    });
+    expect(prisma.document.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches follow-up documents and rejects duplicate links", async () => {
+    prisma.businessMatterFollowUp.findFirst.mockResolvedValue({ id: "follow-up-1", matterId: "matter-1" });
+    prisma.document.findMany.mockResolvedValue([{ id: "document-2", currentVersionId: "version-2" }]);
+    prisma.businessMatterFollowUpDocument.findMany.mockResolvedValue([]);
+    prisma.businessMatterFollowUpDocument.createMany.mockResolvedValue({ count: 1 });
+
+    await service.attachFollowUpDocuments("matter-1", "follow-up-1", { documentIds: ["document-2"] }, user);
+    expect(prisma.businessMatterFollowUpDocument.createMany).toHaveBeenCalledWith({
+      data: [{ followUpId: "follow-up-1", documentId: "document-2", versionId: "version-2", relationType: "ATTACHMENT" }],
+    });
+
+    prisma.businessMatterFollowUpDocument.findMany.mockResolvedValue([{ documentId: "document-2" }]);
+    await expect(service.attachFollowUpDocuments("matter-1", "follow-up-1", { documentIds: ["document-2"] }, user)).rejects.toBeInstanceOf(ConflictException);
   });
 });

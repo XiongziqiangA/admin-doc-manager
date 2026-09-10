@@ -5,11 +5,13 @@ import {
   EditOutlined,
   FileAddOutlined,
   FileTextOutlined,
+  PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
   Button,
+  Cascader,
   Descriptions,
   Empty,
   Form,
@@ -35,13 +37,17 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   attachBusinessFinanceDocuments,
+  attachBusinessFollowUpDocuments,
+  attachBusinessTaskDocuments,
   createBusinessFollowUp,
   createBusinessFinanceRecord,
   createBusinessTask,
   deleteBusinessContract,
   deleteBusinessFinanceRecord,
   deleteBusinessTask,
+  detachBusinessFollowUpDocument,
   detachBusinessFinanceDocument,
+  detachBusinessTaskDocument,
   formatApiError,
   getBusinessContract,
   getBusinessResponsibilityReport,
@@ -54,11 +60,13 @@ import {
   listDocuments,
   updateBusinessFinanceRecord,
   updateBusinessTask,
+  uploadDocument,
   exportBusinessResponsibilityReport,
   upsertBusinessContract,
 } from "./api";
 import type {
   BusinessActivityRecord,
+  BusinessFinanceDocumentLink,
   BusinessContractRecord,
   BusinessContractStatus,
   BusinessFollowUpMethod,
@@ -74,6 +82,8 @@ import type {
   BusinessTaskRecord,
   BusinessTaskStatus,
   BusinessWorkflowOverview,
+  BusinessWorkflowDocumentLink,
+  CategoryNode,
   DocumentRecord,
   PublicUser,
   UserRecord,
@@ -146,6 +156,7 @@ interface TaskFormValues {
   progress?: number;
   dueDate?: string;
   assigneeId?: string;
+  assigneeName?: string;
   completionNote?: string;
   cancellationReason?: string;
 }
@@ -156,6 +167,7 @@ interface FollowUpFormValues {
   result?: string;
   nextAction?: string;
   nextAssigneeId?: string;
+  nextAssigneeName?: string;
   nextDueAt?: string;
 }
 
@@ -167,10 +179,15 @@ interface FinanceFormValues {
   currency: string;
   status: BusinessFinanceStatus;
   applicantId?: string;
+  applicantName?: string;
   handlerId?: string;
+  handlerName?: string;
   approverId?: string;
+  approverName?: string;
   payerId?: string;
+  payerName?: string;
   settlementOwnerId?: string;
+  settlementOwnerName?: string;
   occurredAt?: string;
   counterparty?: string;
   dueDate?: string;
@@ -193,6 +210,23 @@ interface ContractFormValues {
   status: BusinessContractStatus;
   remark?: string;
 }
+
+type ReferenceInputMode = "master" | "custom";
+type FinancePersonField = "applicant" | "handler" | "approver" | "payer" | "settlementOwner";
+type FinancePersonIdField = "applicantId" | "handlerId" | "approverId" | "payerId" | "settlementOwnerId";
+type FinancePersonNameField = "applicantName" | "handlerName" | "approverName" | "payerName" | "settlementOwnerName";
+type AttachmentTarget =
+  | { kind: "TASK"; id: string; title: string; documents: BusinessWorkflowDocumentLink[] }
+  | { kind: "FOLLOW_UP"; id: string; title: string; documents: BusinessWorkflowDocumentLink[] }
+  | { kind: "FINANCE"; id: string; title: string; documents: BusinessFinanceDocumentLink[] };
+
+const financePersonFields: Array<{ key: FinancePersonField; label: string; idField: FinancePersonIdField; nameField: FinancePersonNameField }> = [
+  { key: "applicant", label: "申请人", idField: "applicantId", nameField: "applicantName" },
+  { key: "handler", label: "经办负责人", idField: "handlerId", nameField: "handlerName" },
+  { key: "approver", label: "审批负责人", idField: "approverId", nameField: "approverName" },
+  { key: "payer", label: "付款负责人", idField: "payerId", nameField: "payerName" },
+  { key: "settlementOwner", label: "结算负责人", idField: "settlementOwnerId", nameField: "settlementOwnerName" },
+];
 
 export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: number }) {
   const [overview, setOverview] = useState<BusinessWorkflowOverview | null>(null);
@@ -374,6 +408,7 @@ interface BusinessWorkflowPanelProps {
   matter: BusinessMatterDetail;
   currentUser: PublicUser;
   users: UserRecord[];
+  categories: CategoryNode[];
   onOpenDocument: (document: DocumentRecord) => void;
   onChanged: () => void;
 }
@@ -382,6 +417,7 @@ export function BusinessWorkflowPanel({
   matter,
   currentUser,
   users,
+  categories,
   onOpenDocument,
   onChanged,
 }: BusinessWorkflowPanelProps) {
@@ -404,7 +440,20 @@ export function BusinessWorkflowPanel({
   const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherSubmitting, setVoucherSubmitting] = useState(false);
+  const [attachmentTarget, setAttachmentTarget] = useState<AttachmentTarget | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentCategoryPath, setAttachmentCategoryPath] = useState<string[]>([]);
+  const [attachmentSubmitting, setAttachmentSubmitting] = useState(false);
   const [taskView, setTaskView] = useState<TaskView>("all");
+  const [taskAssigneeMode, setTaskAssigneeMode] = useState<ReferenceInputMode>("master");
+  const [followUpAssigneeMode, setFollowUpAssigneeMode] = useState<ReferenceInputMode>("master");
+  const [financePersonModes, setFinancePersonModes] = useState<Record<FinancePersonField, ReferenceInputMode>>({
+    applicant: "master",
+    handler: "master",
+    approver: "master",
+    payer: "master",
+    settlementOwner: "master",
+  });
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
   const [taskForm] = Form.useForm<TaskFormValues>();
@@ -450,6 +499,7 @@ export function BusinessWorkflowPanel({
   const openFollowUpForm = () => {
     followUpForm.resetFields();
     followUpForm.setFieldsValue({ method: "CALL", nextAssigneeId: currentUser.id });
+    setFollowUpAssigneeMode("master");
     setFollowUpOpen(true);
   };
 
@@ -462,7 +512,8 @@ export function BusinessWorkflowPanel({
         content: values.content.trim(),
         result: values.result?.trim() || null,
         nextAction: values.nextAction?.trim() || null,
-        nextAssigneeId: values.nextAssigneeId || null,
+        nextAssigneeId: followUpAssigneeMode === "master" ? values.nextAssigneeId || null : null,
+        nextAssigneeName: followUpAssigneeMode === "custom" ? values.nextAssigneeName?.trim() || null : null,
         nextDueAt: values.nextDueAt || null,
       });
       message.success("人工跟进已记录");
@@ -479,6 +530,7 @@ export function BusinessWorkflowPanel({
   const openTaskForm = (task?: BusinessTaskRecord) => {
     setEditingTask(task ?? null);
     taskForm.resetFields();
+    setTaskAssigneeMode(task?.assigneeName ? "custom" : task || isAdmin ? "master" : "custom");
     taskForm.setFieldsValue(task ? {
       title: task.title,
       description: task.description ?? undefined,
@@ -487,6 +539,7 @@ export function BusinessWorkflowPanel({
       progress: task.progress,
       dueDate: task.dueDate?.slice(0, 10),
       assigneeId: task.assigneeId ?? undefined,
+      assigneeName: task.assigneeName ?? undefined,
       completionNote: task.completionNote ?? undefined,
       cancellationReason: task.cancellationReason ?? undefined,
     } : { status: "TODO", priority: "NORMAL", assigneeId: matter.ownerId });
@@ -506,7 +559,11 @@ export function BusinessWorkflowPanel({
         dueDate: values.dueDate || null,
         completionNote: values.completionNote?.trim() || null,
         cancellationReason: values.cancellationReason?.trim() || null,
-        ...(isAdmin ? { assigneeId: values.assigneeId || null } : {}),
+        ...(taskAssigneeMode === "custom"
+          ? { assigneeId: null, assigneeName: values.assigneeName?.trim() || null }
+          : isAdmin
+            ? { assigneeId: values.assigneeId || null, assigneeName: null }
+            : {}),
       };
       if (editingTask) {
         await updateBusinessTask(matter.id, editingTask.id, payload);
@@ -557,6 +614,9 @@ export function BusinessWorkflowPanel({
   const openFinanceForm = (record?: BusinessFinanceRecord) => {
     setEditingFinance(record ?? null);
     financeForm.resetFields();
+    setFinancePersonModes(Object.fromEntries(
+      financePersonFields.map(({ key, nameField }) => [key, record?.[nameField as keyof BusinessFinanceRecord] ? "custom" : "master"]),
+    ) as Record<FinancePersonField, ReferenceInputMode>);
     financeForm.setFieldsValue(record ? {
       kind: record.kind,
       title: record.title,
@@ -565,10 +625,15 @@ export function BusinessWorkflowPanel({
       currency: record.currency,
       status: record.status,
       applicantId: record.applicantId ?? undefined,
+      applicantName: record.applicantName ?? undefined,
       handlerId: record.handlerId ?? undefined,
+      handlerName: record.handlerName ?? undefined,
       approverId: record.approverId ?? undefined,
+      approverName: record.approverName ?? undefined,
       payerId: record.payerId ?? undefined,
+      payerName: record.payerName ?? undefined,
       settlementOwnerId: record.settlementOwnerId ?? undefined,
+      settlementOwnerName: record.settlementOwnerName ?? undefined,
       occurredAt: record.occurredAt?.slice(0, 10),
       counterparty: record.counterparty ?? undefined,
       dueDate: record.dueDate?.slice(0, 10),
@@ -594,13 +659,7 @@ export function BusinessWorkflowPanel({
         amount: values.amount,
         currency: values.currency.trim().toUpperCase(),
         status: values.status,
-        ...(isAdmin ? {
-          applicantId: values.applicantId || null,
-          handlerId: values.handlerId || null,
-          approverId: values.approverId || null,
-          payerId: values.payerId || null,
-          settlementOwnerId: values.settlementOwnerId || null,
-        } : {}),
+        ...buildFinanceResponsibilityPayload(values, financePersonModes, isAdmin),
         occurredAt: values.occurredAt || null,
         counterparty: values.counterparty?.trim() || null,
         dueDate: values.dueDate || null,
@@ -735,6 +794,74 @@ export function BusinessWorkflowPanel({
     }
   };
 
+  const openAttachmentModal = (target: AttachmentTarget) => {
+    setAttachmentTarget(target);
+    setAttachmentFiles([]);
+    setAttachmentCategoryPath([]);
+  };
+
+  const closeAttachmentModal = (force = false) => {
+    if (attachmentSubmitting && !force) return;
+    setAttachmentTarget(null);
+    setAttachmentFiles([]);
+    setAttachmentCategoryPath([]);
+  };
+
+  const submitAttachments = async () => {
+    if (!attachmentTarget || !attachmentFiles.length) return;
+    if (!attachmentCategoryPath.length) {
+      message.warning("请先选择附件所属分类");
+      return;
+    }
+    const categoryId = attachmentCategoryPath[0];
+    const subcategoryId = attachmentCategoryPath.length > 1 ? attachmentCategoryPath[attachmentCategoryPath.length - 1] : undefined;
+    setAttachmentSubmitting(true);
+    try {
+      const uploadedIds: string[] = [];
+      for (const file of attachmentFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("categoryId", categoryId);
+        if (subcategoryId) formData.append("subcategoryId", subcategoryId);
+        const document = await uploadDocument(formData);
+        uploadedIds.push(document.id);
+      }
+      if (attachmentTarget.kind === "TASK") {
+        await attachBusinessTaskDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds });
+      } else if (attachmentTarget.kind === "FOLLOW_UP") {
+        await attachBusinessFollowUpDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds });
+      } else {
+        await attachBusinessFinanceDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds, relationType: "ATTACHMENT" });
+      }
+      message.success(`已上传并关联 ${uploadedIds.length} 份附件`);
+      closeAttachmentModal(true);
+      await refreshAfterChange();
+    } catch (error) {
+      message.error(`附件上传或关联失败：${formatApiError(error)}`);
+    } finally {
+      setAttachmentSubmitting(false);
+    }
+  };
+
+  const detachAttachment = async (target: AttachmentTarget, link: BusinessWorkflowDocumentLink | BusinessFinanceDocumentLink) => {
+    try {
+      if (target.kind === "TASK") {
+        await detachBusinessTaskDocument(matter.id, target.id, link.documentId);
+      } else if (target.kind === "FOLLOW_UP") {
+        await detachBusinessFollowUpDocument(matter.id, target.id, link.documentId);
+      } else {
+        await detachBusinessFinanceDocument(matter.id, target.id, link.documentId);
+      }
+      message.success("附件关联已取消，文件中心源文件仍会保留");
+      await refreshAfterChange();
+      setAttachmentTarget((current) => current
+        ? { ...current, documents: current.documents.filter((item) => item.documentId !== link.documentId) } as AttachmentTarget
+        : current);
+    } catch (error) {
+      message.error(`取消附件关联失败：${formatApiError(error)}`);
+    }
+  };
+
   const detachVoucher = async (record: BusinessFinanceRecord, document: DocumentRecord) => {
     try {
       await detachBusinessFinanceDocument(matter.id, record.id, document.id);
@@ -829,6 +956,7 @@ export function BusinessWorkflowPanel({
                 ...(task.status === "IN_PROGRESS" ? [
                   <Button key="complete" type="link" icon={<CheckOutlined />} onClick={() => void completeTask(task)}>完成</Button>,
                 ] : []),
+                <Button key="attachments" type="link" icon={<PaperClipOutlined />} onClick={() => openAttachmentModal({ kind: "TASK", id: task.id, title: task.title, documents: task.documents })}>附件 {task.documents.length || ""}</Button>,
                 <Button key="edit" type="link" icon={<EditOutlined />} onClick={() => openTaskForm(task)}>编辑</Button>,
                 <Button key="delete" type="link" danger icon={<DeleteOutlined />} onClick={() => removeTask(task)}>删除</Button>,
               ]}
@@ -837,7 +965,7 @@ export function BusinessWorkflowPanel({
                 title={<Space wrap><Typography.Text strong>{task.title}</Typography.Text><Tag color={taskStatusColors[task.status]}>{taskStatusLabels[task.status]}</Tag><Tag color={priorityColors[task.priority]}>{priorityLabels[task.priority]}</Tag><Typography.Text type="secondary">进度 {task.progress}%</Typography.Text></Space>}
                 description={
                   <Space direction="vertical" size={2}>
-                    <Typography.Text type="secondary">负责人：{task.assignee?.realName || task.assignee?.username || "未指定"} · 截止：{formatDateOnly(task.dueDate)} · 完成：{task.completedBy?.realName || "-"}</Typography.Text>
+                    <Typography.Text type="secondary">负责人：{task.assigneeName || task.assignee?.realName || task.assignee?.username || "未指定"} · 截止：{formatDateOnly(task.dueDate)} · 完成：{task.completedBy?.realName || "-"}</Typography.Text>
                     <Progress percent={task.progress} size="small" status={task.status === "CANCELLED" ? "exception" : task.status === "COMPLETED" ? "success" : "active"} />
                     {task.description ? <Typography.Text>{task.description}</Typography.Text> : null}
                     {task.completionNote ? <Typography.Text type="success">完成说明：{task.completionNote}</Typography.Text> : null}
@@ -859,10 +987,16 @@ export function BusinessWorkflowPanel({
         <Button type="primary" size="small" icon={<PlusOutlined />} onClick={openFollowUpForm}>记录跟进</Button>
       </div>
       {followUps.length ? (
-        <List
-          dataSource={followUps}
-          renderItem={(followUp) => (
-            <List.Item>
+          <List
+            dataSource={followUps}
+            renderItem={(followUp) => (
+            <List.Item
+              actions={[
+                <Button key="attachments" type="link" icon={<PaperClipOutlined />} onClick={() => openAttachmentModal({ kind: "FOLLOW_UP", id: followUp.id, title: followUp.content.slice(0, 40), documents: followUp.documents })}>
+                  附件 {followUp.documents.length || ""}
+                </Button>,
+              ]}
+            >
               <List.Item.Meta
                 title={
                   <Space wrap>
@@ -879,7 +1013,7 @@ export function BusinessWorkflowPanel({
                     {followUp.nextAction ? <Typography.Text>下一步：{followUp.nextAction}</Typography.Text> : null}
                     {followUp.nextDueAt ? (
                       <Typography.Text type="secondary">
-                        下次跟进：{followUp.nextAssignee?.realName || "未指定"} · {formatDateTime(followUp.nextDueAt)}
+                        下次跟进：{followUp.nextAssigneeName || followUp.nextAssignee?.realName || "未指定"} · {formatDateTime(followUp.nextDueAt)}
                       </Typography.Text>
                     ) : <Typography.Text type="secondary">暂未安排下一次跟进</Typography.Text>}
                   </Space>
@@ -906,6 +1040,7 @@ export function BusinessWorkflowPanel({
               className="business-finance-list-item"
               actions={[
                 <Button key="voucher" type="link" icon={<FileAddOutlined />} onClick={() => void openVoucherModal(record)}>凭证</Button>,
+                <Button key="attachments" type="link" icon={<PaperClipOutlined />} onClick={() => openAttachmentModal({ kind: "FINANCE", id: record.id, title: record.title, documents: record.documents })}>上传附件</Button>,
                 <Button key="edit" type="link" icon={<EditOutlined />} onClick={() => openFinanceForm(record)}>编辑</Button>,
                 <Button key="delete" type="link" danger icon={<DeleteOutlined />} onClick={() => removeFinance(record)}>删除</Button>,
               ]}
@@ -917,15 +1052,15 @@ export function BusinessWorkflowPanel({
                     <Typography.Text type="secondary">{record.recordNo} · {formatAmount(record.amount, record.currency)} · {formatDateOnly(record.occurredAt)}</Typography.Text>
                     {record.counterparty ? <Typography.Text>往来对象：{record.counterparty}</Typography.Text> : null}
                     <Typography.Text type="secondary">
-                      申请人：{record.applicant?.realName || record.createdBy?.realName || "未指定"} · 经办：{record.handler?.realName || "未指定"} · 审批：{record.approver?.realName || "未指定"} · 付款：{record.payer?.realName || "未指定"} · 结算：{record.settlementOwner?.realName || "未指定"}
+                      申请人：{record.applicantName || record.applicant?.realName || record.createdBy?.realName || "未指定"} · 经办：{record.handlerName || record.handler?.realName || "未指定"} · 审批：{record.approverName || record.approver?.realName || "未指定"} · 付款：{record.payerName || record.payer?.realName || "未指定"} · 结算：{record.settlementOwnerName || record.settlementOwner?.realName || "未指定"}
                     </Typography.Text>
                     {record.rejectionReason ? <Typography.Text type="danger">拒绝原因：{record.rejectionReason}</Typography.Text> : null}
                     {record.settlementNote ? <Typography.Text type="success">结算说明：{record.settlementNote}</Typography.Text> : null}
                     {record.documents.length ? (
                       <Space wrap size={4}>
                         {record.documents.map((link) => (
-                          <span className="business-voucher-chip" key={link.documentId}>
-                            <Button type="link" size="small" onClick={() => onOpenDocument(link.document)}>{link.document.title}</Button>
+                            <span className="business-voucher-chip" key={link.documentId}>
+                              <Button type="link" size="small" onClick={() => onOpenDocument(link.document)}>{link.document.title}</Button>
                             <Button type="text" danger size="small" icon={<DeleteOutlined />} title="取消凭证关联" aria-label="取消凭证关联" onClick={() => void detachVoucher(record, link.document)} />
                           </span>
                         ))}
@@ -1008,7 +1143,29 @@ export function BusinessWorkflowPanel({
             <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={taskStatusOptions(editingTask ?? undefined)} /></Form.Item>
             <Form.Item name="priority" label="优先级" rules={[{ required: true }]}><Select options={Object.entries(priorityLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
             <Form.Item name="dueDate" label="截止日期"><Input type="date" /></Form.Item>
-            {isAdmin ? <Form.Item name="assigneeId" label="负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item> : null}
+            <div className="business-workflow-reference-field">
+              <Typography.Text strong>负责人</Typography.Text>
+              <Segmented
+                block
+                size="small"
+                value={taskAssigneeMode}
+                options={[{ label: "系统账号", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                onChange={(value) => {
+                  const next = value as ReferenceInputMode;
+                  setTaskAssigneeMode(next);
+                  taskForm.setFieldsValue(next === "custom" ? { assigneeId: undefined } : { assigneeName: undefined });
+                }}
+              />
+              {taskAssigneeMode === "custom" ? (
+                <Form.Item name="assigneeName" rules={[{ required: true, message: "请输入负责人名称" }]}>
+                  <Input maxLength={200} placeholder="例如：外部项目负责人" />
+                </Form.Item>
+              ) : isAdmin ? (
+                <Form.Item name="assigneeId"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
+              ) : (
+                <Input disabled value={editingTask?.assignee?.realName || editingTask?.assignee?.username || currentUser.realName} />
+              )}
+            </div>
             <Form.Item name="progress" label="进度（%）"><InputNumber min={0} max={100} precision={0} className="full-width-control" /></Form.Item>
           </div>
           {taskStatusValue === "COMPLETED" ? <Form.Item name="completionNote" label="完成说明" rules={[{ required: true, message: "请输入完成说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
@@ -1026,13 +1183,33 @@ export function BusinessWorkflowPanel({
             <Form.Item name="nextDueAt" label="下一次跟进日期">
               <Input type="date" />
             </Form.Item>
-            <Form.Item name="nextAssigneeId" label="下一责任人">
-              <Select
-                allowClear={isAdmin}
-                disabled={!isAdmin}
-                options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))}
+            <div className="business-workflow-reference-field">
+              <Typography.Text strong>下一责任人</Typography.Text>
+              <Segmented
+                block
+                size="small"
+                value={followUpAssigneeMode}
+                options={[{ label: "系统账号", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                onChange={(value) => {
+                  const next = value as ReferenceInputMode;
+                  setFollowUpAssigneeMode(next);
+                  followUpForm.setFieldsValue(next === "custom" ? { nextAssigneeId: undefined } : { nextAssigneeName: undefined });
+                }}
               />
-            </Form.Item>
+              {followUpAssigneeMode === "custom" ? (
+                <Form.Item name="nextAssigneeName" rules={[{ required: true, message: "请输入下一责任人" }]}>
+                  <Input maxLength={200} placeholder="例如：代账公司李老师" />
+                </Form.Item>
+              ) : (
+                <Form.Item name="nextAssigneeId">
+                  <Select
+                    allowClear={isAdmin}
+                    disabled={!isAdmin}
+                    options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))}
+                  />
+                </Form.Item>
+              )}
+            </div>
           </div>
           <Form.Item name="content" label="跟进内容" rules={[{ required: true, message: "请输入跟进内容" }]}>
             <Input.TextArea rows={4} maxLength={4000} />
@@ -1050,15 +1227,38 @@ export function BusinessWorkflowPanel({
           </div>
           <Form.Item name="title" label="记录标题" rules={[{ required: true, message: "请输入记录标题" }]}><Input maxLength={200} /></Form.Item>
           {!editingFinance ? <Form.Item name="recordNo" label="业务单号"><Input maxLength={120} placeholder="留空时自动生成" /></Form.Item> : null}
-          {isAdmin ? (
-            <div className="business-workflow-form-grid">
-              <Form.Item name="applicantId" label="申请人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
-              <Form.Item name="handlerId" label="经办负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
-              <Form.Item name="approverId" label="审批负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
-              <Form.Item name="payerId" label="付款负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
-              <Form.Item name="settlementOwnerId" label="结算负责人"><Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} /></Form.Item>
-            </div>
-          ) : null}
+          <div className="business-workflow-form-grid">
+            {financePersonFields.map(({ key, label, idField, nameField }) => {
+              const mode = financePersonModes[key];
+              return (
+                <div className="business-workflow-reference-field" key={key}>
+                  <Typography.Text strong>{label}</Typography.Text>
+                  <Segmented
+                    block
+                    size="small"
+                    value={mode}
+                    options={[{ label: "系统账号", value: "master" }, { label: "自定义输入", value: "custom" }]}
+                    onChange={(value) => {
+                      const next = value as ReferenceInputMode;
+                      setFinancePersonModes((current) => ({ ...current, [key]: next }));
+                      financeForm.setFieldsValue(next === "custom" ? { [idField]: undefined } : { [nameField]: undefined });
+                    }}
+                  />
+                  {mode === "custom" ? (
+                    <Form.Item name={nameField} rules={[{ required: true, message: `请输入${label}` }]}>
+                      <Input maxLength={200} placeholder={`请输入${label}`} />
+                    </Form.Item>
+                  ) : isAdmin ? (
+                    <Form.Item name={idField}>
+                      <Select allowClear showSearch optionFilterProp="label" options={users.map((item) => ({ value: item.id, label: `${item.realName}（${item.username}）` }))} />
+                    </Form.Item>
+                  ) : (
+                    <Input disabled value={key === "applicant" || key === "handler" ? currentUser.realName : "由管理员设置"} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
           <div className="business-workflow-form-grid">
             <Form.Item name="amount" label="金额" rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0} precision={2} className="full-width-control" /></Form.Item>
             <Form.Item name="currency" label="币种" rules={[{ required: true }]}><Input maxLength={12} /></Form.Item>
@@ -1102,8 +1302,120 @@ export function BusinessWorkflowPanel({
           locale={{ emptyText: <Empty description="暂无可关联文件" /> }}
         />
       </Modal>
+
+      <Modal
+        title={attachmentTarget ? `业务附件 · ${attachmentTarget.title}` : "业务附件"}
+        open={Boolean(attachmentTarget)}
+        width={760}
+        okText={`上传并关联 ${attachmentFiles.length || ""} 份文件`}
+        cancelText="关闭"
+        confirmLoading={attachmentSubmitting}
+        okButtonProps={{ disabled: !attachmentFiles.length || !attachmentCategoryPath.length }}
+        onOk={() => void submitAttachments()}
+        onCancel={() => closeAttachmentModal()}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={14} className="full-width-control">
+          <Typography.Text type="secondary">上传的文件会进入文件中心，并保留当前分类；取消业务关联不会删除文件中心源文件。</Typography.Text>
+          <Cascader
+            className="full-width-control"
+            options={toBusinessCategoryOptions(categories)}
+            value={attachmentCategoryPath}
+            onChange={(value) => setAttachmentCategoryPath(value as string[])}
+            placeholder="选择附件所属分类"
+            changeOnSelect
+          />
+          <label className="business-workflow-file-picker">
+            <PaperClipOutlined />
+            <span>选择附件文件（可多选）</span>
+            <input
+              type="file"
+              multiple
+              onChange={(event) => {
+                setAttachmentFiles(Array.from(event.target.files ?? []));
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {attachmentFiles.length ? (
+            <List
+              size="small"
+              bordered
+              dataSource={attachmentFiles}
+              renderItem={(file) => <List.Item>{file.name}<Typography.Text type="secondary">{formatFileSize(file.size)}</Typography.Text></List.Item>}
+            />
+          ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未选择新附件" />}
+          <Typography.Text strong>已关联附件</Typography.Text>
+          {attachmentTarget?.documents.length ? (
+            <List
+              size="small"
+              bordered
+              dataSource={attachmentTarget.documents}
+              renderItem={(link) => (
+                <List.Item
+                  actions={[
+                    <Button key="view" type="link" onClick={() => onOpenDocument(link.document)}>查看</Button>,
+                    <Button key="detach" type="link" danger onClick={() => void detachAttachment(attachmentTarget, link)}>取消关联</Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    avatar={<FileTextOutlined />}
+                    title={link.document.title}
+                    description={`来源：${getBusinessDocumentCategoryPathText(link.document)} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"}`}
+                  />
+                </List.Item>
+              )}
+            />
+          ) : <Typography.Text type="secondary">暂无已关联附件</Typography.Text>}
+        </Space>
+      </Modal>
     </section>
   );
+}
+
+function buildFinanceResponsibilityPayload(
+  values: FinanceFormValues,
+  modes: Record<FinancePersonField, ReferenceInputMode>,
+  isAdmin: boolean,
+) {
+  const payload: Record<string, string | null> = {};
+  for (const { key, idField, nameField } of financePersonFields) {
+    if (modes[key] === "custom") {
+      payload[nameField] = values[nameField]?.trim() || null;
+      payload[idField] = null;
+    } else if (isAdmin) {
+      payload[idField] = values[idField] || null;
+      payload[nameField] = null;
+    }
+  }
+  return payload;
+}
+
+interface BusinessWorkflowCategoryOption {
+  value: string;
+  label: string;
+  children?: BusinessWorkflowCategoryOption[];
+}
+
+function toBusinessCategoryOptions(nodes: CategoryNode[]): BusinessWorkflowCategoryOption[] {
+  return nodes.map((node) => ({
+    value: node.id,
+    label: node.name,
+    children: node.children?.length ? toBusinessCategoryOptions(node.children) : undefined,
+  }));
+}
+
+function getBusinessDocumentCategoryPathText(document: DocumentRecord) {
+  if (document.category?.name && document.subcategory?.name) {
+    return `${document.category.name} / ${document.subcategory.name}`;
+  }
+  return document.category?.name || document.subcategory?.name || "未分类";
+}
+
+function formatFileSize(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatDateOnly(value?: string | null) {

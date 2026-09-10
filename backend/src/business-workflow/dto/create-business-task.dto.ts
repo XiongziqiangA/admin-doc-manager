@@ -37,6 +37,12 @@ export class CreateBusinessTaskDto {
   @IsString()
   assigneeId?: string | null;
 
+  @ApiPropertyOptional({ description: "自定义负责人名称；填写后不绑定系统账号" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  assigneeName?: string | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()

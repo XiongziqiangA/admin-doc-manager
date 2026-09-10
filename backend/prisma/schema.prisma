@@ -161,6 +161,10 @@ enum BusinessActivityAction {
   FINANCE_DELETED
   FINANCE_DOCUMENT_ATTACHED
   FINANCE_DOCUMENT_DETACHED
+  TASK_DOCUMENT_ATTACHED
+  TASK_DOCUMENT_DETACHED
+  FOLLOW_UP_DOCUMENT_ATTACHED
+  FOLLOW_UP_DOCUMENT_DETACHED
 }
 
 model User {
@@ -359,6 +363,7 @@ model BusinessMatterTask {
   cancelledById String?            @map("cancelled_by_id")
   cancellationReason String?       @db.Text @map("cancellation_reason")
   assigneeId  String?              @map("assignee_id")
+  assigneeName String?             @map("assignee_name")
   createdById String               @map("created_by_id")
   createdAt   DateTime             @default(now()) @map("created_at")
   updatedAt   DateTime             @updatedAt @map("updated_at")
@@ -368,6 +373,7 @@ model BusinessMatterTask {
   createdBy   User                 @relation("BusinessTaskCreatedBy", fields: [createdById], references: [id])
   completedBy User?                @relation("BusinessTaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   cancelledBy User?                @relation("BusinessTaskCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  documents   BusinessMatterTaskDocument[]
 
   @@index([matterId, status])
   @@index([assigneeId, status])
@@ -387,6 +393,7 @@ model BusinessMatterFollowUp {
   result         String?                 @db.Text
   nextAction     String?                 @db.Text @map("next_action")
   nextAssigneeId String?                 @map("next_assignee_id")
+  nextAssigneeName String?               @map("next_assignee_name")
   nextDueAt      DateTime?               @map("next_due_at")
   createdById    String                  @map("created_by_id")
   createdAt      DateTime                @default(now()) @map("created_at")
@@ -395,6 +402,7 @@ model BusinessMatterFollowUp {
   matter         BusinessMatter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
   nextAssignee   User?                   @relation("BusinessFollowUpNextAssignee", fields: [nextAssigneeId], references: [id], onDelete: SetNull)
   createdBy      User                    @relation("BusinessFollowUpCreatedBy", fields: [createdById], references: [id])
+  documents      BusinessMatterFollowUpDocument[]
 
   @@index([matterId, createdAt])
   @@index([nextAssigneeId, nextDueAt])
@@ -436,10 +444,15 @@ model BusinessMatterFinanceRecord {
   amount       Decimal                        @db.Decimal(15, 2)
   currency     String                         @default("CNY")
   applicantId  String?                        @map("applicant_id")
+  applicantName String?                       @map("applicant_name")
   handlerId    String?                        @map("handler_id")
+  handlerName  String?                        @map("handler_name")
   approverId   String?                        @map("approver_id")
+  approverName String?                        @map("approver_name")
   payerId      String?                        @map("payer_id")
+  payerName    String?                        @map("payer_name")
   settlementOwnerId String?                   @map("settlement_owner_id")
+  settlementOwnerName String?                 @map("settlement_owner_name")
   occurredAt   DateTime?                      @map("occurred_at")
   counterparty String?
   dueDate      DateTime?                      @map("due_date")
@@ -496,6 +509,38 @@ model BusinessMatterFinanceDocument {
   @@map("business_matter_finance_documents")
 }
 
+model BusinessMatterTaskDocument {
+  taskId       String               @map("task_id")
+  documentId   String               @map("document_id")
+  versionId    String?              @map("version_id")
+  relationType String               @default("ATTACHMENT") @map("relation_type")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  task         BusinessMatterTask  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document     Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      DocumentVersion?     @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@id([taskId, documentId])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("business_matter_task_documents")
+}
+
+model BusinessMatterFollowUpDocument {
+  followUpId  String                 @map("follow_up_id")
+  documentId  String                 @map("document_id")
+  versionId   String?                @map("version_id")
+  relationType String                @default("ATTACHMENT") @map("relation_type")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  followUp    BusinessMatterFollowUp @relation(fields: [followUpId], references: [id], onDelete: Cascade)
+  document    Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version     DocumentVersion?       @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@id([followUpId, documentId])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("business_matter_follow_up_documents")
+}
+
 model BusinessMatterActivity {
   id        String                 @id @default(uuid())
   matterId  String                 @map("matter_id")
@@ -541,6 +586,8 @@ model Document {
   financePackageSuggestions FinancePackageSuggestion[]
   businessMatterLinks BusinessMatterDocument[]
   businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
+  businessTaskDocumentLinks BusinessMatterTaskDocument[]
+  businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -574,6 +621,8 @@ model DocumentVersion {
   financePackageSuggestions FinancePackageSuggestion[]
   businessMatterLinks BusinessMatterDocument[]
   businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
+  businessTaskDocumentLinks BusinessMatterTaskDocument[]
+  businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
 
   @@unique([documentId, versionNo])
   @@index([documentId])

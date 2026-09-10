@@ -26,6 +26,7 @@ import { PublicUser } from "../users/user.presenter";
 import { BusinessMattersService } from "../business-matters/business-matters.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
+import { AttachBusinessDocumentsDto } from "./dto/attach-business-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
 import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
@@ -87,8 +88,12 @@ export class BusinessWorkflowService {
 
   async createTask(matterId: string, dto: CreateBusinessTaskDto, user: PublicUser) {
     const matter = await this.businessMatters.requireEditableForRelatedData(matterId, user);
-    const assigneeId = dto.assigneeId ?? matter.ownerId;
-    await this.ensureResponsibleUser(assigneeId, user, "任务负责人");
+    const assigneeName = this.optionalText(dto.assigneeName);
+    this.validateExclusivePerson("任务负责人", dto.assigneeId, assigneeName);
+    const assigneeId = assigneeName ? null : dto.assigneeId ?? matter.ownerId;
+    if (assigneeId) {
+      await this.ensureResponsibleUser(assigneeId, user, "任务负责人");
+    }
     const title = this.normalizeText(dto.title, "任务标题不能为空");
     const status: BusinessTaskStatus = dto.status === undefined ? BusinessTaskStatus.TODO : dto.status;
     if (!this.isInitialTaskStatus(status)) {
@@ -114,6 +119,7 @@ export class BusinessWorkflowService {
         cancelledById: null,
         cancellationReason,
         assigneeId,
+        assigneeName,
         createdById: user.id,
       },
       include: this.taskInclude(),
@@ -141,6 +147,8 @@ export class BusinessWorkflowService {
       }
       await this.ensureActiveUser(dto.assigneeId);
     }
+    const assigneeName = dto.assigneeName === undefined ? undefined : this.optionalText(dto.assigneeName);
+    this.validateExclusivePerson("任务负责人", dto.assigneeId, assigneeName);
     const nextStatus = dto.status ?? task.status;
     this.validateTaskStatusTransition(task.status, nextStatus);
     const completionNote = dto.completionNote === undefined ? task.completionNote : this.optionalText(dto.completionNote);
@@ -168,11 +176,18 @@ export class BusinessWorkflowService {
       cancelledBy: nextStatus === BusinessTaskStatus.CANCELLED && task.status !== BusinessTaskStatus.CANCELLED
         ? { connect: { id: user.id } }
         : undefined,
-      assignee: dto.assigneeId === undefined
-        ? undefined
-        : dto.assigneeId === null
+      assignee: dto.assigneeId !== undefined
+        ? dto.assigneeId === null
           ? { disconnect: true }
-          : { connect: { id: dto.assigneeId } },
+          : { connect: { id: dto.assigneeId } }
+        : dto.assigneeName !== undefined
+          ? { disconnect: true }
+          : undefined,
+      assigneeName: dto.assigneeId !== undefined
+        ? null
+        : dto.assigneeName === undefined
+          ? undefined
+          : assigneeName,
       completedAt: dto.status === undefined
         ? undefined
         : nextStatus === BusinessTaskStatus.COMPLETED
@@ -201,6 +216,7 @@ export class BusinessWorkflowService {
         ["优先级", task.priority, updated.priority],
         ["进度", task.progress, updated.progress],
         ["负责人", task.assigneeId, updated.assigneeId],
+        ["自定义负责人", task.assigneeName, updated.assigneeName],
         ["截止日期", task.dueDate, updated.dueDate],
         ["完成说明", task.completionNote, updated.completionNote],
         ["完成时间", task.completedAt, updated.completedAt],
@@ -211,6 +227,63 @@ export class BusinessWorkflowService {
       ]),
     });
     return updated;
+  }
+
+  async attachTaskDocuments(
+    matterId: string,
+    taskId: string,
+    dto: AttachBusinessDocumentsDto,
+    user: PublicUser,
+  ) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireTask(matterId, taskId);
+    const documentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: { id: { in: documentIds }, deletedAt: null, status: { not: DocumentStatus.DELETED } },
+      select: { id: true, currentVersionId: true },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new BadRequestException("存在不存在或已删除的任务附件");
+    }
+    const existing = await this.prisma.businessMatterTaskDocument.findMany({
+      where: { taskId, documentId: { in: documentIds } },
+      select: { documentId: true },
+    });
+    if (existing.length) {
+      throw new ConflictException("所选附件中包含已关联文件");
+    }
+    const result = await this.prisma.businessMatterTaskDocument.createMany({
+      data: documents.map((document) => ({
+        taskId,
+        documentId: document.id,
+        versionId: document.currentVersionId,
+        relationType: this.optionalText(dto.relationType) ?? "ATTACHMENT",
+      })),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.TASK_DOCUMENT_ATTACHED, `为跟进任务关联 ${result.count} 份附件`, {
+      objectType: "TASK_DOCUMENT_LINK",
+      objectId: taskId,
+      related: { documentCount: result.count },
+    });
+    return { taskId, addedCount: result.count };
+  }
+
+  async detachTaskDocument(matterId: string, taskId: string, documentId: string, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireTask(matterId, taskId);
+    const link = await this.prisma.businessMatterTaskDocument.findFirst({ where: { taskId, documentId } });
+    if (!link) {
+      throw new NotFoundException("任务附件关联不存在");
+    }
+    const result = await this.prisma.businessMatterTaskDocument.delete({
+      where: { taskId_documentId: { taskId, documentId } },
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.TASK_DOCUMENT_DETACHED, "取消跟进任务附件关联", {
+      objectType: "TASK_DOCUMENT_LINK",
+      objectId: taskId,
+      related: { documentId },
+    });
+    return result;
   }
 
   async removeTask(matterId: string, taskId: string, user: PublicUser) {
@@ -260,8 +333,10 @@ export class BusinessWorkflowService {
     await this.businessMatters.requireEditableForRelatedData(matterId, user);
     const content = this.normalizeText(dto.content, "跟进内容不能为空");
     const nextAssigneeId = dto.nextAssigneeId?.trim() || null;
+    const nextAssigneeName = this.optionalText(dto.nextAssigneeName);
+    this.validateExclusivePerson("下一责任人", nextAssigneeId, nextAssigneeName);
     const nextDueAt = this.toDate(dto.nextDueAt);
-    if (nextDueAt && !nextAssigneeId) {
+    if (nextDueAt && !nextAssigneeId && !nextAssigneeName) {
       throw new BadRequestException("填写下一次跟进时间时必须指定下一责任人");
     }
     if (nextAssigneeId) {
@@ -277,6 +352,7 @@ export class BusinessWorkflowService {
         result: this.optionalText(dto.result),
         nextAction: this.optionalText(dto.nextAction),
         nextAssigneeId,
+        nextAssigneeName,
         nextDueAt,
         matterId,
         createdById: user.id,
@@ -294,11 +370,69 @@ export class BusinessWorkflowService {
         snapshot: {
           method: followUp.method,
           nextAssigneeId: followUp.nextAssigneeId,
+          nextAssigneeName: followUp.nextAssigneeName,
           nextDueAt: this.activityValue(followUp.nextDueAt),
         },
       },
     );
     return followUp;
+  }
+
+  async attachFollowUpDocuments(
+    matterId: string,
+    followUpId: string,
+    dto: AttachBusinessDocumentsDto,
+    user: PublicUser,
+  ) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireFollowUp(matterId, followUpId);
+    const documentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: { id: { in: documentIds }, deletedAt: null, status: { not: DocumentStatus.DELETED } },
+      select: { id: true, currentVersionId: true },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new BadRequestException("存在不存在或已删除的跟进附件");
+    }
+    const existing = await this.prisma.businessMatterFollowUpDocument.findMany({
+      where: { followUpId, documentId: { in: documentIds } },
+      select: { documentId: true },
+    });
+    if (existing.length) {
+      throw new ConflictException("所选附件中包含已关联文件");
+    }
+    const result = await this.prisma.businessMatterFollowUpDocument.createMany({
+      data: documents.map((document) => ({
+        followUpId,
+        documentId: document.id,
+        versionId: document.currentVersionId,
+        relationType: this.optionalText(dto.relationType) ?? "ATTACHMENT",
+      })),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.FOLLOW_UP_DOCUMENT_ATTACHED, `为人工跟进关联 ${result.count} 份附件`, {
+      objectType: "FOLLOW_UP_DOCUMENT_LINK",
+      objectId: followUpId,
+      related: { documentCount: result.count },
+    });
+    return { followUpId, addedCount: result.count };
+  }
+
+  async detachFollowUpDocument(matterId: string, followUpId: string, documentId: string, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireFollowUp(matterId, followUpId);
+    const link = await this.prisma.businessMatterFollowUpDocument.findFirst({ where: { followUpId, documentId } });
+    if (!link) {
+      throw new NotFoundException("跟进附件关联不存在");
+    }
+    const result = await this.prisma.businessMatterFollowUpDocument.delete({
+      where: { followUpId_documentId: { followUpId, documentId } },
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.FOLLOW_UP_DOCUMENT_DETACHED, "取消人工跟进附件关联", {
+      objectType: "FOLLOW_UP_DOCUMENT_LINK",
+      objectId: followUpId,
+      related: { documentId },
+    });
+    return result;
   }
 
   async getContract(matterId: string) {
@@ -445,10 +579,20 @@ export class BusinessWorkflowService {
     if (!this.isInitialFinanceStatus(status)) {
       throw new BadRequestException("新建财务记录只能处于草稿或待处理状态");
     }
-    const applicantId = dto.applicantId ?? user.id;
-    const handlerId = dto.handlerId ?? user.id;
-    await this.ensureResponsibleUser(applicantId, user, "申请人");
-    await this.ensureResponsibleUser(handlerId, user, "经办负责人");
+    const applicantName = this.optionalText(dto.applicantName);
+    const handlerName = this.optionalText(dto.handlerName);
+    const approverName = this.optionalText(dto.approverName);
+    const payerName = this.optionalText(dto.payerName);
+    const settlementOwnerName = this.optionalText(dto.settlementOwnerName);
+    this.validateExclusivePerson("申请人", dto.applicantId, applicantName);
+    this.validateExclusivePerson("经办负责人", dto.handlerId, handlerName);
+    this.validateExclusivePerson("审批负责人", dto.approverId, approverName);
+    this.validateExclusivePerson("付款负责人", dto.payerId, payerName);
+    this.validateExclusivePerson("结算负责人", dto.settlementOwnerId, settlementOwnerName);
+    const applicantId = applicantName ? null : dto.applicantId ?? user.id;
+    const handlerId = handlerName ? null : dto.handlerId ?? user.id;
+    if (applicantId) await this.ensureResponsibleUser(applicantId, user, "申请人");
+    if (handlerId) await this.ensureResponsibleUser(handlerId, user, "经办负责人");
     await this.ensureOptionalResponsibleUser(dto.approverId, "审批负责人");
     await this.ensureOptionalResponsibleUser(dto.payerId, "付款负责人");
     await this.ensureOptionalResponsibleUser(dto.settlementOwnerId, "结算负责人");
@@ -462,10 +606,15 @@ export class BusinessWorkflowService {
         amount: this.requireAmount(dto.amount),
         currency: this.normalizeCurrency(dto.currency),
         applicantId,
+        applicantName,
         handlerId,
+        handlerName,
         approverId: dto.approverId ?? null,
+        approverName,
         payerId: dto.payerId ?? null,
+        payerName,
         settlementOwnerId: dto.settlementOwnerId ?? null,
+        settlementOwnerName,
         occurredAt: this.toDate(dto.occurredAt),
         counterparty: this.optionalText(dto.counterparty),
         dueDate: this.toDate(dto.dueDate),
@@ -487,10 +636,15 @@ export class BusinessWorkflowService {
         title: record.title,
         amount: this.activityValue(record.amount),
         applicantId: record.applicantId,
+        applicantName: record.applicantName,
         handlerId: record.handlerId,
+        handlerName: record.handlerName,
         approverId: record.approverId,
+        approverName: record.approverName,
         payerId: record.payerId,
+        payerName: record.payerName,
         settlementOwnerId: record.settlementOwnerId,
+        settlementOwnerName: record.settlementOwnerName,
       },
     });
     return record;
@@ -566,10 +720,15 @@ export class BusinessWorkflowService {
         ["币种", record.currency, updated.currency],
         ["状态", record.status, updated.status],
         ["申请人", record.applicantId, updated.applicantId],
+        ["自定义申请人", record.applicantName, updated.applicantName],
         ["经办负责人", record.handlerId, updated.handlerId],
+        ["自定义经办负责人", record.handlerName, updated.handlerName],
         ["审批负责人", record.approverId, updated.approverId],
+        ["自定义审批负责人", record.approverName, updated.approverName],
         ["付款负责人", record.payerId, updated.payerId],
+        ["自定义付款负责人", record.payerName, updated.payerName],
         ["结算负责人", record.settlementOwnerId, updated.settlementOwnerId],
+        ["自定义结算负责人", record.settlementOwnerName, updated.settlementOwnerName],
         ["应结日期", record.dueDate, updated.dueDate],
         ["结清日期", record.settledAt, updated.settledAt],
         ["拒绝原因", record.rejectionReason, updated.rejectionReason],
@@ -986,6 +1145,14 @@ export class BusinessWorkflowService {
     return task;
   }
 
+  private async requireFollowUp(matterId: string, followUpId: string) {
+    const followUp = await this.prisma.businessMatterFollowUp.findFirst({ where: { id: followUpId, matterId, deletedAt: null } });
+    if (!followUp) {
+      throw new NotFoundException("人工跟进记录不存在");
+    }
+    return followUp;
+  }
+
   private async requireFinanceRecord(matterId: string, recordId: string) {
     const record = await this.prisma.businessMatterFinanceRecord.findFirst({ where: { id: recordId, matterId, deletedAt: null } });
     if (!record) {
@@ -1017,28 +1184,45 @@ export class BusinessWorkflowService {
   private async buildFinanceResponsibilityData(dto: UpdateBusinessFinanceRecordDto, user: PublicUser) {
     const data: Prisma.BusinessMatterFinanceRecordUpdateInput = {};
     const fields = [
-      ["applicantId", "applicant", "申请人"],
-      ["handlerId", "handler", "经办负责人"],
-      ["approverId", "approver", "审批负责人"],
-      ["payerId", "payer", "付款负责人"],
-      ["settlementOwnerId", "settlementOwner", "结算负责人"],
+      ["applicantId", "applicantName", "applicant", "申请人"],
+      ["handlerId", "handlerName", "handler", "经办负责人"],
+      ["approverId", "approverName", "approver", "审批负责人"],
+      ["payerId", "payerName", "payer", "付款负责人"],
+      ["settlementOwnerId", "settlementOwnerName", "settlementOwner", "结算负责人"],
     ] as const;
-    for (const [field, relation, label] of fields) {
-      const value = dto[field];
-      if (value === undefined) {
+    for (const [idField, nameField, relation, label] of fields) {
+      const value = dto[idField];
+      const customName = dto[nameField] === undefined ? undefined : this.optionalText(dto[nameField]);
+      this.validateExclusivePerson(label, value, customName);
+      if (value === undefined && dto[nameField] === undefined) {
         continue;
       }
-      if (user.role !== UserRole.ADMIN) {
+      if (value !== undefined && user.role !== UserRole.ADMIN) {
         throw new ForbiddenException(`只有管理员可以调整${label}`);
       }
-      if (value === null) {
+      if (customName) {
         data[relation] = { disconnect: true } as never;
+        data[nameField] = customName as never;
+      } else if (value !== undefined) {
+        data[nameField] = null as never;
+        if (value === null) {
+          data[relation] = { disconnect: true } as never;
+        } else {
+          await this.ensureActiveUser(value);
+          data[relation] = { connect: { id: value } } as never;
+        }
       } else {
-        await this.ensureActiveUser(value);
-        data[relation] = { connect: { id: value } } as never;
+        data[relation] = { disconnect: true } as never;
+        data[nameField] = null as never;
       }
     }
     return data;
+  }
+
+  private validateExclusivePerson(label: string, id?: string | null, customName?: string | null) {
+    if (id && customName) {
+      throw new BadRequestException(`${label}不能同时填写系统账号和自定义名称`);
+    }
   }
 
   private requireFinanceActor(
@@ -1164,6 +1348,13 @@ export class BusinessWorkflowService {
       createdBy: { select: personSelect },
       completedBy: { select: personSelect },
       cancelledBy: { select: personSelect },
+      documents: {
+        include: {
+          document: { include: { currentVersion: true, category: true, subcategory: true } },
+          version: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     };
   }
 
@@ -1171,6 +1362,13 @@ export class BusinessWorkflowService {
     return {
       createdBy: { select: personSelect },
       nextAssignee: { select: personSelect },
+      documents: {
+        include: {
+          document: { include: { currentVersion: true, category: true, subcategory: true } },
+          version: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     };
   }
 
@@ -1185,7 +1383,13 @@ export class BusinessWorkflowService {
       approvedBy: { select: personSelect },
       paidBy: { select: personSelect },
       rejectedBy: { select: personSelect },
-      documents: { include: { document: { include: { currentVersion: true } }, version: true }, orderBy: { createdAt: "desc" } },
+      documents: {
+        include: {
+          document: { include: { currentVersion: true, category: true, subcategory: true } },
+          version: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     };
   }
 

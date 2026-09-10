@@ -38,6 +38,12 @@ export class UpdateBusinessTaskDto {
   @IsString()
   assigneeId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "自定义负责人名称；与 assigneeId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  assigneeName?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsDateString()

@@ -8,6 +8,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { PublicUser } from "../users/user.presenter";
 import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
+import { AttachBusinessDocumentsDto } from "./dto/attach-business-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
 import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
@@ -76,6 +77,26 @@ export class BusinessWorkflowController {
     return this.workflow.removeTask(matterId, taskId, user);
   }
 
+  @Post("business-matters/:matterId/tasks/:taskId/documents")
+  attachTaskDocuments(
+    @Param("matterId") matterId: string,
+    @Param("taskId") taskId: string,
+    @Body() dto: AttachBusinessDocumentsDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.attachTaskDocuments(matterId, taskId, dto, user);
+  }
+
+  @Delete("business-matters/:matterId/tasks/:taskId/documents/:documentId")
+  detachTaskDocument(
+    @Param("matterId") matterId: string,
+    @Param("taskId") taskId: string,
+    @Param("documentId") documentId: string,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.detachTaskDocument(matterId, taskId, documentId, user);
+  }
+
   @Get("business-matters/:matterId/follow-ups")
   listFollowUps(@Param("matterId") matterId: string, @Query() query: ListBusinessFollowUpsDto) {
     return this.workflow.listFollowUps(matterId, query);
@@ -88,6 +109,26 @@ export class BusinessWorkflowController {
     @CurrentUser() user: PublicUser,
   ) {
     return this.workflow.createFollowUp(matterId, dto, user);
+  }
+
+  @Post("business-matters/:matterId/follow-ups/:followUpId/documents")
+  attachFollowUpDocuments(
+    @Param("matterId") matterId: string,
+    @Param("followUpId") followUpId: string,
+    @Body() dto: AttachBusinessDocumentsDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.attachFollowUpDocuments(matterId, followUpId, dto, user);
+  }
+
+  @Delete("business-matters/:matterId/follow-ups/:followUpId/documents/:documentId")
+  detachFollowUpDocument(
+    @Param("matterId") matterId: string,
+    @Param("followUpId") followUpId: string,
+    @Param("documentId") documentId: string,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.detachFollowUpDocument(matterId, followUpId, documentId, user);
   }
 
   @Get("business-matters/:matterId/contract")

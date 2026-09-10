@@ -30,6 +30,12 @@ export class CreateBusinessFollowUpDto {
   @IsString()
   nextAssigneeId?: string | null;
 
+  @ApiPropertyOptional({ description: "下一次跟进自定义责任人；与 nextAssigneeId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  nextAssigneeName?: string | null;
+
   @ApiPropertyOptional({ description: "下一次跟进时间" })
   @IsOptional()
   @IsDateString()

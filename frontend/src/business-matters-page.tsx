@@ -9,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import {
   Button,
+  Cascader,
   Descriptions,
   Drawer,
   Empty,
@@ -46,6 +47,7 @@ import type {
   BusinessMatterRecord,
   BusinessMatterStatus,
   BusinessMatterType,
+  CategoryNode,
   DepartmentRecord,
   DocumentRecord,
   PartnerRecord,
@@ -100,6 +102,7 @@ interface BusinessMattersPageProps {
   currentUser: PublicUser;
   departments: DepartmentRecord[];
   partners: PartnerRecord[];
+  categories: CategoryNode[];
   onOpenDocument: (document: DocumentRecord) => void;
 }
 
@@ -107,6 +110,7 @@ export function BusinessMattersPage({
   currentUser,
   departments,
   partners,
+  categories,
   onOpenDocument,
 }: BusinessMattersPageProps) {
   const [records, setRecords] = useState<BusinessMatterRecord[]>([]);
@@ -129,6 +133,7 @@ export function BusinessMattersPage({
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachSubmitting, setAttachSubmitting] = useState(false);
   const [attachKeyword, setAttachKeyword] = useState("");
+  const [attachCategoryPath, setAttachCategoryPath] = useState<string[]>([]);
   const [availableDocuments, setAvailableDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [detachingDocument, setDetachingDocument] = useState<DocumentRecord | null>(null);
@@ -350,6 +355,7 @@ export function BusinessMattersPage({
       return;
     }
     setAttachKeyword("");
+    setAttachCategoryPath([]);
     setSelectedDocumentIds([]);
     setAttachOpen(true);
     void loadAvailableDocuments();
@@ -412,9 +418,9 @@ export function BusinessMattersPage({
     }
     const query = attachKeyword.trim().toLocaleLowerCase("zh-CN");
     if (!query) {
-      return true;
+      return matchesDocumentCategory(document, attachCategoryPath);
     }
-    return [document.title, document.documentNo, document.currentVersion?.originalFileName ?? ""]
+    return matchesDocumentCategory(document, attachCategoryPath) && [document.title, document.documentNo, document.currentVersion?.originalFileName ?? ""]
       .join(" ")
       .toLocaleLowerCase("zh-CN")
       .includes(query);
@@ -497,6 +503,11 @@ export function BusinessMattersPage({
       title: "当前版本",
       width: 120,
       render: (_, record) => record.currentVersion?.versionLabel ?? "-",
+    },
+    {
+      title: "来源分类",
+      width: 180,
+      render: (_, record) => getDocumentCategoryPathText(record),
     },
   ];
 
@@ -831,7 +842,7 @@ export function BusinessMattersPage({
                       <List.Item.Meta
                         avatar={<FileTextOutlined />}
                         title={link.document.title}
-                        description={`${link.document.documentNo} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"}`}
+                        description={`${link.document.documentNo} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"} · 来源：${getDocumentCategoryPathText(link.document)}`}
                       />
                     </List.Item>
                   )}
@@ -845,6 +856,7 @@ export function BusinessMattersPage({
               matter={selectedMatter}
               currentUser={currentUser}
               users={users}
+              categories={categories}
               onOpenDocument={onOpenDocument}
               onChanged={() => setWorkflowRevision((value) => value + 1)}
             />
@@ -866,6 +878,15 @@ export function BusinessMattersPage({
       >
         <Space direction="vertical" size={12} className="full-width-control">
           <Input.Search allowClear placeholder="搜索文件名称、编号" value={attachKeyword} onChange={(event) => setAttachKeyword(event.target.value)} />
+          <Cascader
+            allowClear
+            className="full-width-control"
+            options={toCategoryOptions(categories)}
+            value={attachCategoryPath}
+            onChange={(value) => setAttachCategoryPath(value as string[])}
+            placeholder="按现有分类筛选"
+            changeOnSelect
+          />
           <Typography.Text type="secondary">已隐藏当前事项已经关联的文件，文件不会被复制。</Typography.Text>
           <Table
             rowKey="id"
@@ -885,6 +906,37 @@ export function BusinessMattersPage({
       </Modal>
     </div>
   );
+}
+
+interface BusinessCategoryOption {
+  value: string;
+  label: string;
+  children?: BusinessCategoryOption[];
+}
+
+function toCategoryOptions(nodes: CategoryNode[]): BusinessCategoryOption[] {
+  return nodes.map((node) => ({
+    value: node.id,
+    label: node.name,
+    children: node.children?.length ? toCategoryOptions(node.children) : undefined,
+  }));
+}
+
+function matchesDocumentCategory(document: DocumentRecord, path: string[]) {
+  if (!path.length) {
+    return true;
+  }
+  const selectedId = path[path.length - 1];
+  return path.length === 1
+    ? document.categoryId === selectedId
+    : document.subcategoryId === selectedId;
+}
+
+function getDocumentCategoryPathText(document: DocumentRecord) {
+  if (document.category?.name && document.subcategory?.name) {
+    return `${document.category.name} / ${document.subcategory.name}`;
+  }
+  return document.category?.name || document.subcategory?.name || "未分类";
 }
 
 function formatDate(value?: string | null) {

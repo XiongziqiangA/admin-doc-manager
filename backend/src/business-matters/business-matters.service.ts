@@ -446,7 +446,10 @@ export class BusinessMattersService {
         orderBy: [{ type: "asc" }, { updatedAt: "desc" }],
       },
       documents: {
-        include: { document: { include: { currentVersion: true } }, version: true },
+        include: {
+          document: { include: { currentVersion: true, category: true, subcategory: true } },
+          version: true,
+        },
         orderBy: { createdAt: "desc" },
       },
     };

@@ -32,25 +32,55 @@ export class UpdateBusinessFinanceRecordDto {
   @IsString()
   applicantId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "自定义申请人名称；与 applicantId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  applicantName?: string | null;
+
   @ApiPropertyOptional({ description: "经办负责人，仅管理员可调整" })
   @IsOptional()
   @IsString()
   handlerId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "自定义经办负责人名称；与 handlerId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  handlerName?: string | null;
 
   @ApiPropertyOptional({ description: "审批负责人，仅管理员可调整" })
   @IsOptional()
   @IsString()
   approverId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "自定义审批负责人名称；与 approverId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  approverName?: string | null;
+
   @ApiPropertyOptional({ description: "付款负责人，仅管理员可调整" })
   @IsOptional()
   @IsString()
   payerId?: string | null;
 
+  @ApiPropertyOptional({ nullable: true, description: "自定义付款负责人名称；与 payerId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  payerName?: string | null;
+
   @ApiPropertyOptional({ description: "结算负责人，仅管理员可调整" })
   @IsOptional()
   @IsString()
   settlementOwnerId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "自定义结算负责人名称；与 settlementOwnerId 二选一" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  settlementOwnerName?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()

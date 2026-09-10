@@ -11,6 +11,7 @@ import type {
   BusinessFollowUpRecord,
   BusinessFinanceDocumentLink,
   BusinessFinanceRecord,
+  BusinessWorkflowDocumentLink,
   BusinessReminder,
   BusinessResponsibilityReport,
   BusinessTaskRecord,
@@ -184,6 +185,25 @@ export async function deleteBusinessTask(matterId: string, taskId: string) {
   return request<BusinessTaskRecord>({ method: "DELETE", url: `/business-matters/${matterId}/tasks/${taskId}` });
 }
 
+export async function attachBusinessTaskDocuments(
+  matterId: string,
+  taskId: string,
+  payload: { documentIds: string[]; relationType?: string },
+) {
+  return request<{ taskId: string; addedCount: number }>({
+    method: "POST",
+    url: `/business-matters/${matterId}/tasks/${taskId}/documents`,
+    data: payload,
+  });
+}
+
+export async function detachBusinessTaskDocument(matterId: string, taskId: string, documentId: string) {
+  return request<BusinessWorkflowDocumentLink>({
+    method: "DELETE",
+    url: `/business-matters/${matterId}/tasks/${taskId}/documents/${documentId}`,
+  });
+}
+
 export async function listBusinessFollowUps(matterId: string, params: Record<string, string | number | undefined> = {}) {
   return request<ApiList<BusinessFollowUpRecord>>({
     method: "GET",
@@ -194,6 +214,25 @@ export async function listBusinessFollowUps(matterId: string, params: Record<str
 
 export async function createBusinessFollowUp(matterId: string, payload: Record<string, unknown>) {
   return request<BusinessFollowUpRecord>({ method: "POST", url: `/business-matters/${matterId}/follow-ups`, data: payload });
+}
+
+export async function attachBusinessFollowUpDocuments(
+  matterId: string,
+  followUpId: string,
+  payload: { documentIds: string[]; relationType?: string },
+) {
+  return request<{ followUpId: string; addedCount: number }>({
+    method: "POST",
+    url: `/business-matters/${matterId}/follow-ups/${followUpId}/documents`,
+    data: payload,
+  });
+}
+
+export async function detachBusinessFollowUpDocument(matterId: string, followUpId: string, documentId: string) {
+  return request<BusinessWorkflowDocumentLink>({
+    method: "DELETE",
+    url: `/business-matters/${matterId}/follow-ups/${followUpId}/documents/${documentId}`,
+  });
 }
 
 export async function getBusinessContract(matterId: string) {

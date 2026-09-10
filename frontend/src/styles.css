@@ -306,6 +306,39 @@ body {
   min-width: 0;
 }
 
+.business-workflow-reference-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.business-workflow-reference-field .ant-form-item {
+  margin-bottom: 0;
+}
+
+.business-workflow-file-picker {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 72px;
+  border: 1px dashed var(--border-color, #d9d9d9);
+  border-radius: 6px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+}
+
+.business-workflow-file-picker:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.business-workflow-file-picker input {
+  display: none;
+}
+
 .business-finance-list-item .ant-list-item-meta,
 .business-finance-content {
   min-width: 0;
