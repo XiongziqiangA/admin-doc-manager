@@ -1992,7 +1992,7 @@ export default function App() {
             onClick={() => setCollapsed((value) => !value)}
           />
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => void refresh()}>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()}>
               {text.refresh}
             </Button>
             <Button type="primary" icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>

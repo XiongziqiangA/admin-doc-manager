@@ -101,7 +101,7 @@ export function BusinessIssuesPanel({
   const statusValue = Form.useWatch("status", form);
   const isAdmin = currentUser.role === "ADMIN";
 
-  const load = async () => {
+  const load = async (showSuccess = false) => {
     setLoading(true);
     try {
       const items: BusinessIssueRecord[] = [];
@@ -114,6 +114,9 @@ export function BusinessIssuesPanel({
         page += 1;
       }
       setIssues(items);
+      if (showSuccess) {
+        message.success("风险与问题已刷新");
+      }
     } catch (error) {
       message.error(`风险与问题加载失败：${formatApiError(error)}`);
     } finally {
@@ -283,7 +286,7 @@ export function BusinessIssuesPanel({
           <Typography.Text type="secondary">记录影响项目进度的风险、问题和处理结果，相关文件可直接挂在记录下。</Typography.Text>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} aria-label="刷新风险与问题" title="刷新风险与问题" loading={loading} onClick={() => void load()} />
+          <Button icon={<ReloadOutlined />} aria-label="刷新风险与问题" title="刷新风险与问题" loading={loading} onClick={() => void load(true)} />
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>登记风险/问题</Button>
         </Space>
       </div>

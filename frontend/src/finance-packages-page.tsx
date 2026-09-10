@@ -188,7 +188,7 @@ export function FinancePackagesPage({ onOpenDocument, categories, departments, t
     return result;
   }, []);
 
-  const loadTasks = useCallback(async (preferredTaskId?: string) => {
+  const loadTasks = useCallback(async (preferredTaskId?: string): Promise<boolean> => {
     setLoadingTasks(true);
     try {
       const result = await listFinancePackages();
@@ -197,19 +197,23 @@ export function FinancePackagesPage({ onOpenDocument, categories, departments, t
         const next = preferredTaskId ?? current;
         return result.items.some((task) => task.id === next) ? next : result.items[0]?.id;
       });
+      return true;
     } catch (error) {
       message.error(`加载财务归集任务失败：${formatApiError(error)}`);
+      return false;
     } finally {
       setLoadingTasks(false);
     }
   }, []);
 
-  const loadDetail = useCallback(async (taskId: string) => {
+  const loadDetail = useCallback(async (taskId: string): Promise<boolean> => {
     setLoadingDetail(true);
     try {
       setDetail(await getFinancePackage(taskId));
+      return true;
     } catch (error) {
       message.error(`加载归集内容失败：${formatApiError(error)}`);
+      return false;
     } finally {
       setLoadingDetail(false);
     }
@@ -316,10 +320,15 @@ export function FinancePackagesPage({ onOpenDocument, categories, departments, t
 
   const refresh = async () => {
     if (!selectedTaskId) {
-      await loadTasks();
+      if (await loadTasks()) {
+        message.success("财务归集已刷新");
+      }
       return;
     }
-    await Promise.all([loadTasks(selectedTaskId), loadDetail(selectedTaskId)]);
+    const results = await Promise.all([loadTasks(selectedTaskId), loadDetail(selectedTaskId)]);
+    if (results.every(Boolean)) {
+      message.success("财务归集已刷新");
+    }
   };
 
   const openCreateTask = () => {
@@ -612,7 +621,7 @@ export function FinancePackagesPage({ onOpenDocument, categories, departments, t
           </div>
           <Space wrap>
             <Tooltip title="刷新">
-              <Button icon={<ReloadOutlined />} aria-label="刷新财务归集" onClick={() => void refresh()} />
+              <Button icon={<ReloadOutlined />} loading={loadingTasks || loadingDetail} aria-label="刷新财务归集" onClick={() => void refresh()} />
             </Tooltip>
             {detail && (
               <>

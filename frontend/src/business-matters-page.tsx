@@ -181,7 +181,7 @@ export function BusinessMattersPage({
 
   const isAdmin = currentUser.role === "ADMIN";
 
-  const loadMatters = async () => {
+  const loadMatters = async (showSuccess = false) => {
     setLoading(true);
     try {
       const result = await listBusinessMatters({
@@ -195,6 +195,9 @@ export function BusinessMattersPage({
       });
       setRecords(result.items);
       setTotal(result.pagination.totalItems);
+      if (showSuccess) {
+        message.success("事项列表已刷新");
+      }
     } catch (error) {
       message.error(`事项列表加载失败：${formatApiError(error)}`);
     } finally {
@@ -626,7 +629,7 @@ export function BusinessMattersPage({
             </Typography.Paragraph>
           </div>
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => void loadMatters()}>
+            <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadMatters(true)}>
               刷新
             </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>

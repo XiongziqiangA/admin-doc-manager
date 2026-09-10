@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import {
+  BusinessActivityAction,
   BusinessFollowUpMethod,
   BusinessContractStatus,
   BusinessFinanceKind,
@@ -712,6 +713,37 @@ describe("BusinessWorkflowService", () => {
               { field: "审批负责人", before: user.id, after: "user-2" },
             ]),
           }),
+        }),
+      }),
+    );
+  });
+
+  it("soft-deletes a finance record and keeps an activity entry for review", async () => {
+    prisma.businessMatterFinanceRecord.findFirst.mockResolvedValue({
+      id: "finance-1",
+      recordNo: "REIM-1",
+      title: "办公用品报销",
+      kind: BusinessFinanceKind.REIMBURSEMENT,
+      status: BusinessFinanceStatus.DRAFT,
+      amount: "128.00",
+      handlerId: user.id,
+    });
+    prisma.businessMatterFinanceRecord.update.mockResolvedValue({
+      id: "finance-1",
+      deletedAt: new Date(),
+    });
+
+    await service.removeFinanceRecord("matter-1", "finance-1", user);
+
+    expect(prisma.businessMatterFinanceRecord.update).toHaveBeenCalledWith({
+      where: { id: "finance-1" },
+      data: { deletedAt: expect.any(Date) },
+    });
+    expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: BusinessActivityAction.FINANCE_DELETED,
+          summary: "删除财务记录“办公用品报销”",
         }),
       }),
     );

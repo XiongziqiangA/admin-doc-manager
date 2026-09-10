@@ -288,7 +288,7 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
   const [reminders, setReminders] = useState<BusinessReminder[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const load = async () => {
+  const load = async (showSuccess = false) => {
     setLoading(true);
     try {
       const [overviewResult, reminderResult] = await Promise.all([
@@ -297,6 +297,9 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
       ]);
       setOverview(overviewResult);
       setReminders(reminderResult.items);
+      if (showSuccess) {
+        message.success("业务工作台已刷新");
+      }
     } catch (error) {
       message.error(`业务概览加载失败：${formatApiError(error)}`);
     } finally {
@@ -312,7 +315,7 @@ export function BusinessWorkflowOverviewPanel({ revision = 0 }: { revision?: num
     <section className="page-band business-workflow-overview">
       <div className="business-matter-section-heading">
         <Typography.Title level={4}>业务工作台</Typography.Title>
-        <Button type="text" icon={<ReloadOutlined />} title="刷新业务工作台" aria-label="刷新业务工作台" loading={loading} onClick={() => void load()} />
+        <Button type="text" icon={<ReloadOutlined />} title="刷新业务工作台" aria-label="刷新业务工作台" loading={loading} onClick={() => void load(true)} />
       </div>
       {overview ? (
         <div className="business-workflow-stat-grid">
@@ -490,6 +493,8 @@ export function BusinessWorkflowPanel({
   const [financeOpen, setFinanceOpen] = useState(false);
   const [editingFinance, setEditingFinance] = useState<BusinessFinanceRecord | null>(null);
   const [financeSubmitting, setFinanceSubmitting] = useState(false);
+  const [financeDeleteTarget, setFinanceDeleteTarget] = useState<BusinessFinanceRecord | null>(null);
+  const [financeDeleting, setFinanceDeleting] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);
   const [contractSubmitting, setContractSubmitting] = useState(false);
   const [voucherTarget, setVoucherTarget] = useState<BusinessFinanceRecord | null>(null);
@@ -525,7 +530,7 @@ export function BusinessWorkflowPanel({
 
   const isAdmin = currentUser.role === "ADMIN";
 
-  const loadWorkflow = async () => {
+  const loadWorkflow = async (showSuccess = false) => {
     setLoading(true);
     try {
       const [taskResult, followUpResult, financeResult, contractResult, activityResult] = await Promise.all([
@@ -540,6 +545,9 @@ export function BusinessWorkflowPanel({
       setFinanceRecords(financeResult.items);
       setContract(contractResult);
       setActivities(activityResult.items);
+      if (showSuccess) {
+        message.success("业务数据已刷新");
+      }
     } catch (error) {
       message.error(`业务详情加载失败：${formatApiError(error)}`);
     } finally {
@@ -806,18 +814,24 @@ export function BusinessWorkflowPanel({
   };
 
   const removeFinance = (record: BusinessFinanceRecord) => {
-    Modal.confirm({
-      title: "删除财务记录",
-      content: `确认删除“${record.title}”吗？关联凭证和源文件不会被删除。`,
-      okButtonProps: { danger: true },
-      okText: "删除",
-      cancelText: "取消",
-      onOk: async () => {
-        await deleteBusinessFinanceRecord(matter.id, record.id);
-        message.success("财务记录已删除");
-        await refreshAfterChange();
-      },
-    });
+    setFinanceDeleteTarget(record);
+  };
+
+  const confirmRemoveFinance = async () => {
+    if (!financeDeleteTarget) return;
+    const record = financeDeleteTarget;
+    setFinanceDeleting(true);
+    try {
+      await deleteBusinessFinanceRecord(matter.id, record.id);
+      setFinanceRecords((current) => current.filter((item) => item.id !== record.id));
+      setFinanceDeleteTarget(null);
+      message.success(`${financeKindLabels[record.kind]}记录已删除`);
+      await refreshAfterChange();
+    } catch (error) {
+      message.error(`删除${financeKindLabels[record.kind]}记录失败：${formatApiError(error)}`);
+    } finally {
+      setFinanceDeleting(false);
+    }
   };
 
   const openContractForm = () => {
@@ -1171,7 +1185,7 @@ export function BusinessWorkflowPanel({
                 <Button key="voucher" type="link" icon={<FileAddOutlined />} onClick={() => void openVoucherModal(record)}>凭证</Button>,
                 <Button key="attachments" type="link" icon={<PaperClipOutlined />} onClick={() => openAttachmentModal({ kind: "FINANCE", id: record.id, title: record.title, documents: record.documents })}>上传附件</Button>,
                 <Button key="edit" type="link" icon={<EditOutlined />} onClick={() => openFinanceForm(record)}>编辑</Button>,
-                <Button key="delete" type="link" danger icon={<DeleteOutlined />} onClick={() => removeFinance(record)}>删除</Button>,
+                <Button key="delete" type="link" danger icon={<DeleteOutlined />} disabled={financeDeleting} onClick={() => removeFinance(record)}>删除</Button>,
               ]}
             >
               <List.Item.Meta
@@ -1239,7 +1253,7 @@ export function BusinessWorkflowPanel({
             <div><Typography.Text type="secondary">{activity.actor.realName || activity.actor.username} · {formatDateTime(activity.createdAt)}</Typography.Text></div>
             {activity.metadata ? (
               <details className="business-activity-details">
-                <summary>查看详细变化</summary>
+                <summary>查看操作详情</summary>
                 <ActivityMetadataView metadata={activity.metadata} />
               </details>
             ) : null}
@@ -1253,7 +1267,7 @@ export function BusinessWorkflowPanel({
     <section className="business-workflow-panel">
       <div className="business-matter-section-heading">
         <Typography.Title level={4}>业务跟踪</Typography.Title>
-        <Button type="text" icon={<ReloadOutlined />} title="刷新业务数据" aria-label="刷新业务数据" loading={loading} onClick={() => void loadWorkflow()} />
+        <Button type="text" icon={<ReloadOutlined />} title="刷新业务数据" aria-label="刷新业务数据" loading={loading} onClick={() => void loadWorkflow(true)} />
       </div>
       <Tabs
         items={[
@@ -1264,6 +1278,29 @@ export function BusinessWorkflowPanel({
           { key: "activity", label: `操作记录 ${activities.length}`, children: activityTab },
         ]}
       />
+
+      <Modal
+        title={`删除${financeDeleteTarget ? financeKindLabels[financeDeleteTarget.kind] : "财务"}记录`}
+        open={Boolean(financeDeleteTarget)}
+        zIndex={2200}
+        okText="确认删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        cancelButtonProps={{ disabled: financeDeleting }}
+        confirmLoading={financeDeleting}
+        maskClosable={!financeDeleting}
+        keyboard={!financeDeleting}
+        onOk={() => void confirmRemoveFinance()}
+        onCancel={() => {
+          if (!financeDeleting) setFinanceDeleteTarget(null);
+        }}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          确认删除“{financeDeleteTarget?.title}”吗？删除后不再参与借款与报销统计。
+        </Typography.Paragraph>
+        <Typography.Text type="secondary">关联凭证和文件中心中的源文件会继续保留。</Typography.Text>
+      </Modal>
 
       <Modal title={editingTask ? "编辑跟进任务" : "新建跟进任务"} open={taskOpen} okText="保存" cancelText="取消" confirmLoading={taskSubmitting} onOk={() => void submitTask()} onCancel={closeTaskForm} destroyOnHidden>
         <Form form={taskForm} layout="vertical">
@@ -1585,33 +1622,174 @@ function formatAmount(value?: string | null, currency = "CNY") {
   return `${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
+const activityFieldLabels: Record<string, string> = {
+  matterNo: "事项编号",
+  recordNo: "记录编号",
+  contractNo: "合同编号",
+  partyName: "合同相对方",
+  title: "标题",
+  name: "名称",
+  kind: "类型",
+  type: "类型",
+  status: "状态",
+  priority: "优先级",
+  severity: "严重程度",
+  method: "跟进方式",
+  amount: "金额",
+  currency: "币种",
+  progress: "进度",
+  dueDate: "截止日期",
+  occurredAt: "发生日期",
+  signedAt: "签署日期",
+  effectiveAt: "生效日期",
+  expiresAt: "到期日期",
+  settledAt: "结清日期",
+  nextDueAt: "下次跟进日期",
+  renewalNoticeDays: "提前提醒",
+  applicantName: "申请人",
+  handlerName: "经办负责人",
+  approverName: "审批负责人",
+  payerName: "付款负责人",
+  settlementOwnerName: "结算负责人",
+  ownerName: "负责人",
+  assigneeName: "负责人",
+  nextAssigneeName: "下次跟进负责人",
+  remark: "备注",
+  rejectionReason: "拒绝原因",
+  settlementNote: "结算说明",
+  completionNote: "完成说明",
+  cancellationReason: "取消原因",
+  resolution: "解决方案",
+  documentCount: "关联文件数",
+};
+
+const activityEnumLabels: Record<string, Record<string, string>> = {
+  kind: { LOAN: "借款", REIMBURSEMENT: "报销", RISK: "风险", ISSUE: "问题" },
+  type: { PROJECT: "项目", CONTRACT: "合同", REIMBURSEMENT: "报销", LOAN: "借款", PROCUREMENT: "采购", RISK: "风险", ISSUE: "问题", OTHER: "其他" },
+  status: {
+    PLANNING: "规划中",
+    TODO: "待处理",
+    OPEN: "待处理",
+    DRAFT: "草稿",
+    PENDING: "待处理",
+    IN_PROGRESS: "进行中",
+    ACTIVE: "生效中",
+    APPROVED: "已批准",
+    PAID: "已支付",
+    SETTLED: "已结清",
+    COMPLETED: "已完成",
+    RESOLVED: "已解决",
+    EXPIRED: "已到期",
+    REJECTED: "已拒绝",
+    TERMINATED: "已终止",
+    CANCELLED: "已取消",
+  },
+  priority: { LOW: "低", NORMAL: "普通", HIGH: "高", URGENT: "紧急" },
+  severity: { LOW: "低", MEDIUM: "中", HIGH: "高", CRITICAL: "紧急" },
+  method: { CALL: "电话", WECHAT: "微信", EMAIL: "邮件", MEETING: "会议", ONSITE: "现场", OTHER: "其他" },
+};
+
+const activityEnumFieldAliases: Record<string, string> = {
+  "记录类型": "kind",
+  "类型": "type",
+  "状态": "status",
+  "优先级": "priority",
+  "严重程度": "severity",
+  "跟进方式": "method",
+};
+
 function ActivityMetadataView({ metadata }: { metadata: Record<string, unknown> }) {
   const changes = Array.isArray(metadata.changes) ? metadata.changes : [];
   const snapshot = metadata.snapshot && typeof metadata.snapshot === "object" ? metadata.snapshot as Record<string, unknown> : null;
   const related = metadata.related && typeof metadata.related === "object" ? metadata.related as Record<string, unknown> : null;
+  const snapshotEntries = snapshot ? getVisibleActivityEntries(snapshot) : [];
+  const relatedEntries = related ? getVisibleActivityEntries(related) : [];
   return (
     <div className="business-activity-metadata">
       {changes.length ? (
-        <List
-          size="small"
-          dataSource={changes}
-          renderItem={(change) => {
-            const item = change as { field?: unknown; before?: unknown; after?: unknown };
-            return <List.Item><Typography.Text>{String(item.field ?? "字段")}: {formatActivityValue(item.before)} → {formatActivityValue(item.after)}</Typography.Text></List.Item>;
-          }}
-        />
+        <div>
+          <Typography.Text strong>变更内容</Typography.Text>
+          <List
+            size="small"
+            dataSource={changes}
+            renderItem={(change) => {
+              const item = change as { field?: unknown; before?: unknown; after?: unknown };
+              const field = String(item.field ?? "内容");
+              return (
+                <List.Item>
+                  <div className="business-activity-change">
+                    <Typography.Text strong>{field}</Typography.Text>
+                    <Typography.Text type="secondary">{formatActivityValue(item.before, field)}</Typography.Text>
+                    <Typography.Text type="secondary">→</Typography.Text>
+                    <Typography.Text>{formatActivityValue(item.after, field)}</Typography.Text>
+                  </div>
+                </List.Item>
+              );
+            }}
+          />
+        </div>
       ) : null}
-      {snapshot ? <Typography.Text type="secondary">记录快照：{formatActivityObject(snapshot)}</Typography.Text> : null}
-      {related ? <Typography.Text type="secondary">关联信息：{formatActivityObject(related)}</Typography.Text> : null}
+      {snapshotEntries.length ? (
+        <div>
+          <Typography.Text strong>当时内容</Typography.Text>
+          <Descriptions bordered size="small" column={1}>
+            {snapshotEntries.map(([key, value]) => (
+              <Descriptions.Item key={key} label={getActivityFieldLabel(key)}>
+                {formatActivityValue(value, key, snapshot?.currency)}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        </div>
+      ) : null}
+      {relatedEntries.length ? (
+        <div>
+          <Typography.Text strong>关联信息</Typography.Text>
+          <Descriptions bordered size="small" column={1}>
+            {relatedEntries.map(([key, value]) => (
+              <Descriptions.Item key={key} label={getActivityFieldLabel(key)}>
+                {formatActivityValue(value, key)}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function formatActivityValue(value: unknown) {
+function getVisibleActivityEntries(value: Record<string, unknown>) {
+  return Object.entries(value).filter(([key, item]) => {
+    if (isTechnicalActivityField(key)) return false;
+    return item !== null && item !== undefined && item !== "";
+  });
+}
+
+function isTechnicalActivityField(key: string) {
+  return key === "objectType" || key === "objectId" || key.endsWith("Id") || key === "versionId";
+}
+
+function getActivityFieldLabel(key: string) {
+  return activityFieldLabels[key] ?? key;
+}
+
+function formatActivityValue(value: unknown, field?: string, currency?: unknown) {
   if (value === null || value === undefined || value === "") return "未设置";
+  const enumField = field ? activityEnumFieldAliases[field] ?? field : undefined;
+  if (enumField && activityEnumLabels[enumField]?.[String(value)]) return activityEnumLabels[enumField][String(value)];
+  if (field === "amount" || field === "金额") return formatAmount(String(value), String(currency ?? "CNY"));
+  if (field === "progress" || field === "进度") return `${value}%`;
+  if (field && (field.endsWith("At") || field.endsWith("Date") || field.includes("日期") || field.includes("时间"))) {
+    return formatDateTime(String(value));
+  }
+  if (isPersonActivityField(field) && isTechnicalIdentifier(value)) return "已指定";
+  if (isTechnicalIdentifier(value)) return "已设置";
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-function formatActivityObject(value: Record<string, unknown>) {
-  return Object.entries(value).map(([key, item]) => `${key}=${formatActivityValue(item)}`).join("；");
+function isPersonActivityField(field?: string) {
+  return Boolean(field && /负责人|申请人|经办|审批|付款|结算|完成人|解决人|跟进人/.test(field));
+}
+
+function isTechnicalIdentifier(value: unknown) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value);
 }

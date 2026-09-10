@@ -713,6 +713,18 @@ body {
   background: #f8fafc;
 }
 
+.business-activity-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.business-activity-metadata .ant-descriptions {
+  margin-top: 6px;
+}
+
 .link-button {
   height: auto;
   padding: 0;

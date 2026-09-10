@@ -89,10 +89,13 @@ export function CategoryManagementPage({
   const secondLevel = flatRecords.filter((item) => item.level === 2);
   const treeData = useMemo(() => toCategoryTree(records), [records]);
 
-  const reload = async () => {
+  const reload = async (showSuccess = false) => {
     setTableLoading(true);
     try {
       setRecords(await listCategories());
+      if (showSuccess) {
+        message.success("分类列表已刷新");
+      }
     } catch (error) {
       message.error(formatApiError(error));
     } finally {
@@ -186,7 +189,7 @@ export function CategoryManagementPage({
         lead="一级分类固定不变；管理员可以在一级分类下维护二级树形分类，用于文件上传和检索。"
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={reload}>
+            <Button icon={<ReloadOutlined />} loading={tableLoading} onClick={() => void reload(true)}>
               刷新
             </Button>
             <Button type="primary" icon={<FolderAddOutlined />} disabled={!isAdmin} onClick={openCreate}>
@@ -254,10 +257,13 @@ export function DepartmentManagementPage({
   useEffect(() => setRecords(departments), [departments]);
   useEffect(() => setTableLoading(loading), [loading]);
 
-  const reload = async () => {
+  const reload = async (showSuccess = false) => {
     setTableLoading(true);
     try {
       setRecords(await listDepartments());
+      if (showSuccess) {
+        message.success("部门列表已刷新");
+      }
     } catch (error) {
       message.error(formatApiError(error));
     } finally {
@@ -344,7 +350,7 @@ export function DepartmentManagementPage({
         lead="部门目前只作为文件元数据和用户资料字段，不参与文件访问权限控制。"
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={reload}>
+            <Button icon={<ReloadOutlined />} loading={tableLoading} onClick={() => void reload(true)}>
               刷新
             </Button>
             <Button type="primary" icon={<PlusOutlined />} disabled={!isAdmin} onClick={() => openModal()}>
@@ -399,11 +405,14 @@ export function PartnerManagementPage({
   useEffect(() => setRecords(partners), [partners]);
   useEffect(() => setTableLoading(loading), [loading]);
 
-  const reload = async () => {
+  const reload = async (showSuccess = false) => {
     setTableLoading(true);
     try {
       const result = await listPartners();
       setRecords(result.items);
+      if (showSuccess) {
+        message.success("合作单位列表已刷新");
+      }
     } catch (error) {
       message.error(formatApiError(error));
     } finally {
@@ -487,7 +496,7 @@ export function PartnerManagementPage({
         lead="维护客户、供应商、合作伙伴和其他单位，文件可以关联多个合作单位。"
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={reload}>
+            <Button icon={<ReloadOutlined />} loading={tableLoading} onClick={() => void reload(true)}>
               刷新
             </Button>
             <Button type="primary" icon={<PlusOutlined />} disabled={!isAdmin} onClick={() => openModal()}>
@@ -566,11 +575,14 @@ export function TagManagementPage({
   useEffect(() => setRecords(tags), [tags]);
   useEffect(() => setTableLoading(loading), [loading]);
 
-  const reload = async () => {
+  const reload = async (showSuccess = false) => {
     setTableLoading(true);
     try {
       const result = await listTags();
       setRecords(result);
+      if (showSuccess) {
+        message.success("标签列表已刷新");
+      }
     } catch (error) {
       message.error(formatApiError(error));
     } finally {
@@ -666,7 +678,7 @@ export function TagManagementPage({
         lead="员工可以在上传文件时创建标签；管理员可以统一改名、删除或合并标签。"
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={reload}>
+            <Button icon={<ReloadOutlined />} loading={tableLoading} onClick={() => void reload(true)}>
               刷新
             </Button>
             <Button icon={<MergeCellsOutlined />} disabled={!isAdmin} onClick={() => setMergeOpen(true)}>
