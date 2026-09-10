@@ -220,6 +220,58 @@ type AttachmentTarget =
   | { kind: "FOLLOW_UP"; id: string; title: string; documents: BusinessWorkflowDocumentLink[] }
   | { kind: "FINANCE"; id: string; title: string; documents: BusinessFinanceDocumentLink[] };
 
+interface AttachmentPickerProps {
+  categories: CategoryNode[];
+  files: File[];
+  categoryPath: string[];
+  onFilesChange: (files: File[]) => void;
+  onCategoryChange: (path: string[]) => void;
+}
+
+function AttachmentPicker({
+  categories,
+  files,
+  categoryPath,
+  onFilesChange,
+  onCategoryChange,
+}: AttachmentPickerProps) {
+  const attachmentCategoryOptions = toBusinessCategoryOptions(categories);
+  return (
+    <div className="business-workflow-inline-attachments">
+      <Typography.Text strong>附件（可选，可多选）</Typography.Text>
+      <Typography.Text type="secondary">选择分类后，可一次选择多个文件，保存记录时会自动上传并关联。</Typography.Text>
+      <Cascader
+        className="full-width-control"
+        options={attachmentCategoryOptions}
+        value={categoryPath}
+        onChange={(value) => onCategoryChange(value as string[])}
+        placeholder="选择附件所属分类"
+        changeOnSelect
+      />
+      <label className="business-workflow-file-picker">
+        <PaperClipOutlined />
+        <span>{files.length ? `已选择 ${files.length} 份附件，可继续重新选择` : "选择附件文件（可多选）"}</span>
+        <input
+          type="file"
+          multiple
+          onChange={(event) => {
+            onFilesChange(Array.from(event.target.files ?? []));
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
+      {files.length ? (
+        <List
+          size="small"
+          bordered
+          dataSource={files}
+          renderItem={(file) => <List.Item>{file.name}<Typography.Text type="secondary">{formatFileSize(file.size)}</Typography.Text></List.Item>}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 const financePersonFields: Array<{ key: FinancePersonField; label: string; idField: FinancePersonIdField; nameField: FinancePersonNameField }> = [
   { key: "applicant", label: "申请人", idField: "applicantId", nameField: "applicantName" },
   { key: "handler", label: "经办负责人", idField: "handlerId", nameField: "handlerName" },
@@ -444,6 +496,8 @@ export function BusinessWorkflowPanel({
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentCategoryPath, setAttachmentCategoryPath] = useState<string[]>([]);
   const [attachmentSubmitting, setAttachmentSubmitting] = useState(false);
+  const [formAttachmentFiles, setFormAttachmentFiles] = useState<File[]>([]);
+  const [formAttachmentCategoryPath, setFormAttachmentCategoryPath] = useState<string[]>([]);
   const [taskView, setTaskView] = useState<TaskView>("all");
   const [taskAssigneeMode, setTaskAssigneeMode] = useState<ReferenceInputMode>("master");
   const [followUpAssigneeMode, setFollowUpAssigneeMode] = useState<ReferenceInputMode>("master");
@@ -500,14 +554,27 @@ export function BusinessWorkflowPanel({
     followUpForm.resetFields();
     followUpForm.setFieldsValue({ method: "CALL", nextAssigneeId: currentUser.id });
     setFollowUpAssigneeMode("master");
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
     setFollowUpOpen(true);
+  };
+
+  const closeFollowUpForm = () => {
+    if (followUpSubmitting) return;
+    setFollowUpOpen(false);
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
   };
 
   const submitFollowUp = async () => {
     try {
       const values = await followUpForm.validateFields();
+      if (formAttachmentFiles.length && !formAttachmentCategoryPath.length) {
+        message.warning("请先选择附件所属分类");
+        return;
+      }
       setFollowUpSubmitting(true);
-      await createBusinessFollowUp(matter.id, {
+      const savedFollowUp = await createBusinessFollowUp(matter.id, {
         method: values.method,
         content: values.content.trim(),
         result: values.result?.trim() || null,
@@ -516,8 +583,14 @@ export function BusinessWorkflowPanel({
         nextAssigneeName: followUpAssigneeMode === "custom" ? values.nextAssigneeName?.trim() || null : null,
         nextDueAt: values.nextDueAt || null,
       });
+      const attachmentCount = await uploadAndAttachFiles(
+        { kind: "FOLLOW_UP", id: savedFollowUp.id, title: savedFollowUp.content.slice(0, 40), documents: [] },
+        formAttachmentFiles,
+        formAttachmentCategoryPath,
+      );
       message.success("人工跟进已记录");
-      setFollowUpOpen(false);
+      if (attachmentCount) message.success(`已上传并关联 ${attachmentCount} 份跟进附件`);
+      closeFollowUpForm();
       await refreshAfterChange();
     } catch (error) {
       if (error && typeof error === "object" && "errorFields" in error) return;
@@ -529,6 +602,8 @@ export function BusinessWorkflowPanel({
 
   const openTaskForm = (task?: BusinessTaskRecord) => {
     setEditingTask(task ?? null);
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
     taskForm.resetFields();
     setTaskAssigneeMode(task?.assigneeName ? "custom" : task || isAdmin ? "master" : "custom");
     taskForm.setFieldsValue(task ? {
@@ -546,9 +621,20 @@ export function BusinessWorkflowPanel({
     setTaskOpen(true);
   };
 
+  const closeTaskForm = () => {
+    if (taskSubmitting) return;
+    setTaskOpen(false);
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
+  };
+
   const submitTask = async () => {
     try {
       const values = await taskForm.validateFields();
+      if (formAttachmentFiles.length && !formAttachmentCategoryPath.length) {
+        message.warning("请先选择附件所属分类");
+        return;
+      }
       setTaskSubmitting(true);
       const payload = {
         title: values.title.trim(),
@@ -565,13 +651,20 @@ export function BusinessWorkflowPanel({
             ? { assigneeId: values.assigneeId || null, assigneeName: null }
             : {}),
       };
+      let savedTask: BusinessTaskRecord;
       if (editingTask) {
-        await updateBusinessTask(matter.id, editingTask.id, payload);
+        savedTask = await updateBusinessTask(matter.id, editingTask.id, payload);
       } else {
-        await createBusinessTask(matter.id, payload);
+        savedTask = await createBusinessTask(matter.id, payload);
       }
+      const attachmentCount = await uploadAndAttachFiles(
+        { kind: "TASK", id: savedTask.id, title: savedTask.title, documents: [] },
+        formAttachmentFiles,
+        formAttachmentCategoryPath,
+      );
       message.success(editingTask ? "跟进任务已更新" : "跟进任务已创建");
-      setTaskOpen(false);
+      if (attachmentCount) message.success(`已上传并关联 ${attachmentCount} 份任务附件`);
+      closeTaskForm();
       await refreshAfterChange();
     } catch (error) {
       if (error && typeof error === "object" && "errorFields" in error) return;
@@ -613,6 +706,8 @@ export function BusinessWorkflowPanel({
 
   const openFinanceForm = (record?: BusinessFinanceRecord) => {
     setEditingFinance(record ?? null);
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
     financeForm.resetFields();
     setFinancePersonModes(Object.fromEntries(
       financePersonFields.map(({ key, nameField }) => [key, record?.[nameField as keyof BusinessFinanceRecord] ? "custom" : "master"]),
@@ -649,9 +744,20 @@ export function BusinessWorkflowPanel({
     setFinanceOpen(true);
   };
 
+  const closeFinanceForm = () => {
+    if (financeSubmitting) return;
+    setFinanceOpen(false);
+    setFormAttachmentFiles([]);
+    setFormAttachmentCategoryPath([]);
+  };
+
   const submitFinance = async () => {
     try {
       const values = await financeForm.validateFields();
+      if (formAttachmentFiles.length && !formAttachmentCategoryPath.length) {
+        message.warning("请先选择附件所属分类");
+        return;
+      }
       setFinanceSubmitting(true);
       const payload = {
         kind: values.kind,
@@ -669,13 +775,17 @@ export function BusinessWorkflowPanel({
         remark: values.remark?.trim() || null,
         ...(!editingFinance && values.recordNo ? { recordNo: values.recordNo.trim() } : {}),
       };
-      if (editingFinance) {
-        await updateBusinessFinanceRecord(matter.id, editingFinance.id, payload);
-      } else {
-        await createBusinessFinanceRecord(matter.id, payload);
-      }
+      const savedFinance = editingFinance
+        ? await updateBusinessFinanceRecord(matter.id, editingFinance.id, payload)
+        : await createBusinessFinanceRecord(matter.id, payload);
+      const attachmentCount = await uploadAndAttachFiles(
+        { kind: "FINANCE", id: savedFinance.id, title: savedFinance.title, documents: [] },
+        formAttachmentFiles,
+        formAttachmentCategoryPath,
+      );
       message.success(editingFinance ? "财务记录已更新" : "财务记录已创建");
-      setFinanceOpen(false);
+      if (attachmentCount) message.success(`已上传并关联 ${attachmentCount} 份财务附件`);
+      closeFinanceForm();
       await refreshAfterChange();
     } catch (error) {
       if (error && typeof error === "object" && "errorFields" in error) return;
@@ -794,6 +904,32 @@ export function BusinessWorkflowPanel({
     }
   };
 
+  const uploadAndAttachFiles = async (target: AttachmentTarget, files: File[], categoryPath: string[]) => {
+    if (!files.length) return 0;
+    if (!categoryPath.length) {
+      throw new Error("请选择附件所属分类");
+    }
+    const categoryId = categoryPath[0];
+    const subcategoryId = categoryPath.length > 1 ? categoryPath[categoryPath.length - 1] : undefined;
+    const uploadedIds: string[] = [];
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("categoryId", categoryId);
+      if (subcategoryId) formData.append("subcategoryId", subcategoryId);
+      const document = await uploadDocument(formData);
+      uploadedIds.push(document.id);
+    }
+    if (target.kind === "TASK") {
+      await attachBusinessTaskDocuments(matter.id, target.id, { documentIds: uploadedIds });
+    } else if (target.kind === "FOLLOW_UP") {
+      await attachBusinessFollowUpDocuments(matter.id, target.id, { documentIds: uploadedIds });
+    } else {
+      await attachBusinessFinanceDocuments(matter.id, target.id, { documentIds: uploadedIds, relationType: "ATTACHMENT" });
+    }
+    return uploadedIds.length;
+  };
+
   const openAttachmentModal = (target: AttachmentTarget) => {
     setAttachmentTarget(target);
     setAttachmentFiles([]);
@@ -813,27 +949,10 @@ export function BusinessWorkflowPanel({
       message.warning("请先选择附件所属分类");
       return;
     }
-    const categoryId = attachmentCategoryPath[0];
-    const subcategoryId = attachmentCategoryPath.length > 1 ? attachmentCategoryPath[attachmentCategoryPath.length - 1] : undefined;
     setAttachmentSubmitting(true);
     try {
-      const uploadedIds: string[] = [];
-      for (const file of attachmentFiles) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("categoryId", categoryId);
-        if (subcategoryId) formData.append("subcategoryId", subcategoryId);
-        const document = await uploadDocument(formData);
-        uploadedIds.push(document.id);
-      }
-      if (attachmentTarget.kind === "TASK") {
-        await attachBusinessTaskDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds });
-      } else if (attachmentTarget.kind === "FOLLOW_UP") {
-        await attachBusinessFollowUpDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds });
-      } else {
-        await attachBusinessFinanceDocuments(matter.id, attachmentTarget.id, { documentIds: uploadedIds, relationType: "ATTACHMENT" });
-      }
-      message.success(`已上传并关联 ${uploadedIds.length} 份附件`);
+      const uploadedCount = await uploadAndAttachFiles(attachmentTarget, attachmentFiles, attachmentCategoryPath);
+      message.success(`已上传并关联 ${uploadedCount} 份附件`);
       closeAttachmentModal(true);
       await refreshAfterChange();
     } catch (error) {
@@ -1136,7 +1255,7 @@ export function BusinessWorkflowPanel({
         ]}
       />
 
-      <Modal title={editingTask ? "编辑跟进任务" : "新建跟进任务"} open={taskOpen} okText="保存" cancelText="取消" confirmLoading={taskSubmitting} onOk={() => void submitTask()} onCancel={() => setTaskOpen(false)} destroyOnHidden>
+      <Modal title={editingTask ? "编辑跟进任务" : "新建跟进任务"} open={taskOpen} okText="保存" cancelText="取消" confirmLoading={taskSubmitting} onOk={() => void submitTask()} onCancel={closeTaskForm} destroyOnHidden>
         <Form form={taskForm} layout="vertical">
           <Form.Item name="title" label="任务标题" rules={[{ required: true, message: "请输入任务标题" }]}><Input maxLength={200} /></Form.Item>
           <div className="business-workflow-form-grid">
@@ -1171,10 +1290,17 @@ export function BusinessWorkflowPanel({
           {taskStatusValue === "COMPLETED" ? <Form.Item name="completionNote" label="完成说明" rules={[{ required: true, message: "请输入完成说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           {taskStatusValue === "CANCELLED" ? <Form.Item name="cancellationReason" label="取消原因" rules={[{ required: true, message: "请输入取消原因" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           <Form.Item name="description" label="说明"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
+          <AttachmentPicker
+            categories={categories}
+            files={formAttachmentFiles}
+            categoryPath={formAttachmentCategoryPath}
+            onFilesChange={setFormAttachmentFiles}
+            onCategoryChange={setFormAttachmentCategoryPath}
+          />
         </Form>
       </Modal>
 
-      <Modal title="记录人工跟进" open={followUpOpen} width={700} okText="保存" cancelText="取消" confirmLoading={followUpSubmitting} onOk={() => void submitFollowUp()} onCancel={() => setFollowUpOpen(false)} destroyOnHidden>
+      <Modal title="记录人工跟进" open={followUpOpen} width={700} okText="保存" cancelText="取消" confirmLoading={followUpSubmitting} onOk={() => void submitFollowUp()} onCancel={closeFollowUpForm} destroyOnHidden>
         <Form form={followUpForm} layout="vertical">
           <div className="business-workflow-form-grid">
             <Form.Item name="method" label="跟进方式" rules={[{ required: true, message: "请选择跟进方式" }]}>
@@ -1216,10 +1342,17 @@ export function BusinessWorkflowPanel({
           </Form.Item>
           <Form.Item name="result" label="跟进结果"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
           <Form.Item name="nextAction" label="下一步动作"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
+          <AttachmentPicker
+            categories={categories}
+            files={formAttachmentFiles}
+            categoryPath={formAttachmentCategoryPath}
+            onFilesChange={setFormAttachmentFiles}
+            onCategoryChange={setFormAttachmentCategoryPath}
+          />
         </Form>
       </Modal>
 
-      <Modal title={editingFinance ? "编辑财务记录" : "新增财务记录"} open={financeOpen} width={700} okText="保存" cancelText="取消" confirmLoading={financeSubmitting} onOk={() => void submitFinance()} onCancel={() => setFinanceOpen(false)} destroyOnHidden>
+      <Modal title={editingFinance ? "编辑财务记录" : "新增财务记录"} open={financeOpen} width={700} okText="保存" cancelText="取消" confirmLoading={financeSubmitting} onOk={() => void submitFinance()} onCancel={closeFinanceForm} destroyOnHidden>
         <Form form={financeForm} layout="vertical">
           <div className="business-workflow-form-grid">
             <Form.Item name="kind" label="记录类型" rules={[{ required: true }]}><Select options={Object.entries(financeKindLabels).map(([value, label]) => ({ value, label }))} /></Form.Item>
@@ -1270,6 +1403,13 @@ export function BusinessWorkflowPanel({
           {financeStatusValue === "REJECTED" ? <Form.Item name="rejectionReason" label="拒绝原因" rules={[{ required: true, message: "请输入拒绝原因" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           {financeStatusValue === "SETTLED" ? <Form.Item name="settlementNote" label="结算说明" rules={[{ required: true, message: "请输入结算说明" }]}><Input.TextArea rows={3} maxLength={4000} /></Form.Item> : null}
           <Form.Item name="remark" label="备注"><Input.TextArea rows={3} maxLength={4000} /></Form.Item>
+          <AttachmentPicker
+            categories={categories}
+            files={formAttachmentFiles}
+            categoryPath={formAttachmentCategoryPath}
+            onFilesChange={setFormAttachmentFiles}
+            onCategoryChange={setFormAttachmentCategoryPath}
+          />
         </Form>
       </Modal>
 

@@ -339,6 +339,13 @@ body {
   display: none;
 }
 
+.business-workflow-inline-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .business-finance-list-item .ant-list-item-meta,
 .business-finance-content {
   min-width: 0;
