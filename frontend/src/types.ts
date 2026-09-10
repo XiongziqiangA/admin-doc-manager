@@ -23,6 +23,9 @@ export type BusinessMilestoneStatus = "PLANNED" | "COMPLETED" | "CANCELLED";
 export type BusinessProjectHealth = "HEALTHY" | "AT_RISK" | "DELAYED" | "COMPLETED" | "CANCELLED" | "NO_PLAN";
 export type BusinessTaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 export type BusinessTaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type BusinessIssueKind = "RISK" | "ISSUE";
+export type BusinessIssueSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type BusinessIssueStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CANCELLED";
 export type BusinessFollowUpMethod = "CALL" | "WECHAT" | "EMAIL" | "MEETING" | "ONSITE" | "OTHER";
 export type BusinessFinanceKind = "LOAN" | "REIMBURSEMENT";
 export type BusinessFinanceStatus = "DRAFT" | "PENDING" | "APPROVED" | "PAID" | "SETTLED" | "REJECTED" | "CANCELLED";
@@ -383,6 +386,40 @@ export interface BusinessProjectPlan {
   stages: BusinessStageRecord[];
   milestones: BusinessMilestoneRecord[];
   tasks: Array<Pick<BusinessTaskRecord, "id" | "title" | "stageId" | "milestoneId" | "progress" | "status" | "dueDate">>;
+}
+
+export interface BusinessIssueDocumentLink {
+  issueId: string;
+  documentId: string;
+  versionId: string | null;
+  relationType: string;
+  createdAt: string;
+  document: DocumentRecord;
+  version?: DocumentVersionRecord | null;
+}
+
+export interface BusinessIssueRecord {
+  id: string;
+  matterId: string;
+  kind: BusinessIssueKind;
+  title: string;
+  description: string | null;
+  severity: BusinessIssueSeverity;
+  status: BusinessIssueStatus;
+  ownerId: string | null;
+  ownerName: string | null;
+  dueDate: string | null;
+  resolution: string | null;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  owner?: BusinessMatterPerson | null;
+  createdBy?: BusinessMatterPerson;
+  resolvedBy?: BusinessMatterPerson | null;
+  documents: BusinessIssueDocumentLink[];
 }
 
 export interface BusinessFollowUpRecord {

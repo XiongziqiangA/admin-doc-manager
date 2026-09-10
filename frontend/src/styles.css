@@ -298,6 +298,65 @@ body {
   border-top: 1px solid #e5e7eb;
 }
 
+.business-issues-panel {
+  min-width: 0;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.business-issue-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.business-issue-stat-grid .ant-statistic {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.business-issue-filters {
+  margin-bottom: 12px;
+}
+
+.business-issue-list {
+  min-width: 0;
+}
+
+.business-issue-list .ant-list-item {
+  align-items: flex-start;
+}
+
+.business-issue-item {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.business-issue-item-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.business-issue-description {
+  max-width: 100%;
+  margin: 0 !important;
+  overflow-wrap: anywhere;
+}
+
+.business-issue-attachments {
+  min-width: 0;
+}
+
 .business-project-progress-summary {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) auto;
@@ -1192,6 +1251,7 @@ body {
   }
 
   .business-workflow-stat-grid,
+  .business-issue-stat-grid,
   .business-workflow-form-grid,
   .business-matter-reference-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1212,6 +1272,11 @@ body {
 
   .business-workflow-reminder-row > .ant-typography {
     padding-left: 0;
+  }
+
+  .business-issue-item-heading {
+    flex-direction: column;
+    gap: 4px;
   }
 
   .finance-task-heading,

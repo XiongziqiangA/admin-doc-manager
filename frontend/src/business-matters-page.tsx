@@ -59,6 +59,7 @@ import type {
   BusinessProjectPlan,
 } from "./types";
 import { BusinessProjectPlanPanel } from "./business-project-plan-panel";
+import { BusinessIssuesPanel } from "./business-issues-panel";
 import { BusinessResponsibilityReportPanel, BusinessWorkflowOverviewPanel, BusinessWorkflowPanel } from "./business-workflow-panel";
 
 const typeLabels: Record<BusinessMatterType, string> = {
@@ -922,6 +923,14 @@ export function BusinessMattersPage({
               plan={selectedProjectPlan}
               users={users}
               currentUser={currentUser}
+              onChanged={() => void refreshSelectedProject()}
+            />
+            <BusinessIssuesPanel
+              matter={selectedMatter}
+              currentUser={currentUser}
+              users={users}
+              categories={categories}
+              onOpenDocument={onOpenDocument}
               onChanged={() => void refreshSelectedProject()}
             />
           </div>

@@ -11,13 +11,16 @@ import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
 import { AttachBusinessDocumentsDto } from "./dto/attach-business-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
 import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
+import { CreateBusinessIssueDto } from "./dto/create-business-issue.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
 import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessActivitiesDto } from "./dto/list-business-activities.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
+import { ListBusinessIssuesDto } from "./dto/list-business-issues.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
 import { ResponsibilityReportDto } from "./dto/responsibility-report.dto";
 import { UpdateBusinessFinanceRecordDto } from "./dto/update-business-finance-record.dto";
+import { UpdateBusinessIssueDto } from "./dto/update-business-issue.dto";
 import { UpdateBusinessTaskDto } from "./dto/update-business-task.dto";
 import { UpsertBusinessContractDto } from "./dto/upsert-business-contract.dto";
 import { Roles } from "../auth/roles.decorator";
@@ -95,6 +98,59 @@ export class BusinessWorkflowController {
     @CurrentUser() user: PublicUser,
   ) {
     return this.workflow.detachTaskDocument(matterId, taskId, documentId, user);
+  }
+
+  @Get("business-matters/:matterId/issues")
+  listIssues(@Param("matterId") matterId: string, @Query() query: ListBusinessIssuesDto) {
+    return this.workflow.listIssues(matterId, query);
+  }
+
+  @Post("business-matters/:matterId/issues")
+  createIssue(
+    @Param("matterId") matterId: string,
+    @Body() dto: CreateBusinessIssueDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.createIssue(matterId, dto, user);
+  }
+
+  @Patch("business-matters/:matterId/issues/:issueId")
+  updateIssue(
+    @Param("matterId") matterId: string,
+    @Param("issueId") issueId: string,
+    @Body() dto: UpdateBusinessIssueDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.updateIssue(matterId, issueId, dto, user);
+  }
+
+  @Delete("business-matters/:matterId/issues/:issueId")
+  removeIssue(
+    @Param("matterId") matterId: string,
+    @Param("issueId") issueId: string,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.removeIssue(matterId, issueId, user);
+  }
+
+  @Post("business-matters/:matterId/issues/:issueId/documents")
+  attachIssueDocuments(
+    @Param("matterId") matterId: string,
+    @Param("issueId") issueId: string,
+    @Body() dto: AttachBusinessDocumentsDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.attachIssueDocuments(matterId, issueId, dto, user);
+  }
+
+  @Delete("business-matters/:matterId/issues/:issueId/documents/:documentId")
+  detachIssueDocument(
+    @Param("matterId") matterId: string,
+    @Param("issueId") issueId: string,
+    @Param("documentId") documentId: string,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.workflow.detachIssueDocument(matterId, issueId, documentId, user);
   }
 
   @Get("business-matters/:matterId/follow-ups")

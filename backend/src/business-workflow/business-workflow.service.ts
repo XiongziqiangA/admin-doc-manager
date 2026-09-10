@@ -10,6 +10,8 @@ import {
   BusinessContractStatus,
   BusinessFinanceKind,
   BusinessFinanceStatus,
+  BusinessIssueKind,
+  BusinessIssueStatus,
   BusinessMatterStatus,
   BusinessMatterType,
   BusinessTaskStatus,
@@ -29,12 +31,15 @@ import { AttachFinanceDocumentsDto } from "./dto/attach-finance-documents.dto";
 import { AttachBusinessDocumentsDto } from "./dto/attach-business-documents.dto";
 import { CreateBusinessFinanceRecordDto } from "./dto/create-business-finance-record.dto";
 import { CreateBusinessFollowUpDto } from "./dto/create-business-follow-up.dto";
+import { CreateBusinessIssueDto } from "./dto/create-business-issue.dto";
 import { CreateBusinessTaskDto } from "./dto/create-business-task.dto";
+import { ListBusinessIssuesDto } from "./dto/list-business-issues.dto";
 import { ListBusinessFollowUpsDto } from "./dto/list-business-follow-ups.dto";
 import { ListBusinessFinanceRecordsDto } from "./dto/list-business-finance-records.dto";
 import { ListBusinessTasksDto } from "./dto/list-business-tasks.dto";
 import { ResponsibilityReportDto } from "./dto/responsibility-report.dto";
 import { UpdateBusinessFinanceRecordDto } from "./dto/update-business-finance-record.dto";
+import { UpdateBusinessIssueDto } from "./dto/update-business-issue.dto";
 import { UpdateBusinessTaskDto } from "./dto/update-business-task.dto";
 import { UpsertBusinessContractDto } from "./dto/upsert-business-contract.dto";
 
@@ -313,6 +318,224 @@ export class BusinessWorkflowService {
       objectType: "TASK",
       objectId: task.id,
       snapshot: { title: task.title, status: task.status, assigneeId: task.assigneeId },
+    });
+    return result;
+  }
+
+  async listIssues(matterId: string, query: ListBusinessIssuesDto) {
+    await this.businessMatters.requireReadable(matterId);
+    const keyword = query.keyword?.trim();
+    const where: Prisma.BusinessMatterIssueWhereInput = {
+      matterId,
+      deletedAt: null,
+      kind: query.kind,
+      severity: query.severity,
+      status: query.status,
+      ownerId: query.ownerId,
+      OR: keyword
+        ? [
+            { title: { contains: keyword, mode: "insensitive" } },
+            { description: { contains: keyword, mode: "insensitive" } },
+            { ownerName: { contains: keyword, mode: "insensitive" } },
+            { resolution: { contains: keyword, mode: "insensitive" } },
+          ]
+        : undefined,
+    };
+    const [items, totalItems] = await this.prisma.$transaction([
+      this.prisma.businessMatterIssue.findMany({
+        where,
+        include: this.issueInclude(),
+        orderBy: [{ status: "asc" }, { severity: "desc" }, { dueDate: "asc" }, { updatedAt: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.businessMatterIssue.count({ where }),
+    ]);
+    return {
+      items,
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / query.pageSize),
+      },
+    };
+  }
+
+  async createIssue(matterId: string, dto: CreateBusinessIssueDto, user: PublicUser) {
+    const matter = await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    const title = this.normalizeText(dto.title, "风险或问题标题不能为空");
+    const status = dto.status ?? BusinessIssueStatus.OPEN;
+    if (!this.isInitialIssueStatus(status)) {
+      throw new BadRequestException("新建风险或问题只能处于待处理或处理中状态");
+    }
+    const ownerName = this.optionalText(dto.ownerName);
+    this.validateExclusivePerson("风险或问题责任人", dto.ownerId, ownerName);
+    const ownerId = ownerName ? null : dto.ownerId ?? matter.ownerId;
+    if (ownerId) {
+      await this.ensureResponsibleUser(ownerId, user, "风险或问题责任人");
+    }
+    const issue = await this.prisma.businessMatterIssue.create({
+      data: {
+        matterId,
+        kind: dto.kind,
+        title,
+        description: this.optionalText(dto.description),
+        severity: dto.severity,
+        status,
+        ownerId,
+        ownerName,
+        dueDate: this.toDate(dto.dueDate),
+        resolution: this.optionalText(dto.resolution),
+        createdById: user.id,
+      },
+      include: this.issueInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.ISSUE_CREATED, `登记${this.issueKindLabel(issue.kind)}“${issue.title}”`, {
+      objectType: "ISSUE",
+      objectId: issue.id,
+      snapshot: {
+        kind: issue.kind,
+        title: issue.title,
+        severity: issue.severity,
+        status: issue.status,
+        ownerId: issue.ownerId,
+        dueDate: this.activityValue(issue.dueDate),
+      },
+    });
+    return issue;
+  }
+
+  async updateIssue(matterId: string, issueId: string, dto: UpdateBusinessIssueDto, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    const issue = await this.requireIssue(matterId, issueId);
+    const ownerName = dto.ownerName === undefined ? undefined : this.optionalText(dto.ownerName);
+    this.validateExclusivePerson("风险或问题责任人", dto.ownerId, ownerName);
+    if (dto.ownerId !== undefined && dto.ownerId !== null) {
+      if (user.role !== UserRole.ADMIN) {
+        throw new ForbiddenException("只有管理员可以调整风险或问题责任人");
+      }
+      await this.ensureActiveUser(dto.ownerId);
+    }
+    const nextStatus = dto.status ?? issue.status;
+    this.validateIssueStatusTransition(issue.status, nextStatus);
+    const resolution = dto.resolution === undefined ? issue.resolution : this.optionalText(dto.resolution);
+    if (nextStatus === BusinessIssueStatus.RESOLVED && !resolution) {
+      throw new BadRequestException("解决风险或问题时必须填写解决方案或处理结果");
+    }
+    const data: Prisma.BusinessMatterIssueUpdateInput = {
+      kind: dto.kind,
+      title: dto.title === undefined ? undefined : this.normalizeText(dto.title, "风险或问题标题不能为空"),
+      description: dto.description === undefined ? undefined : this.optionalText(dto.description),
+      severity: dto.severity,
+      status: dto.status,
+      dueDate: dto.dueDate === undefined ? undefined : this.toDate(dto.dueDate),
+      resolution: dto.resolution === undefined ? undefined : resolution,
+      owner: dto.ownerId !== undefined
+        ? dto.ownerId === null ? { disconnect: true } : { connect: { id: dto.ownerId } }
+        : ownerName !== undefined ? { disconnect: true } : undefined,
+      ownerName: dto.ownerId !== undefined ? null : ownerName,
+      resolvedAt: nextStatus === BusinessIssueStatus.RESOLVED
+        ? issue.resolvedAt ?? new Date()
+        : null,
+      resolvedBy: nextStatus === BusinessIssueStatus.RESOLVED
+        ? issue.status === BusinessIssueStatus.RESOLVED
+          ? undefined
+          : { connect: { id: user.id } }
+        : { disconnect: true },
+    };
+    const updated = await this.prisma.businessMatterIssue.update({
+      where: { id: issue.id },
+      data,
+      include: this.issueInclude(),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.ISSUE_UPDATED, `更新${this.issueKindLabel(updated.kind)}“${updated.title}”`, {
+      objectType: "ISSUE",
+      objectId: updated.id,
+      changes: this.activityChanges([
+        ["类型", issue.kind, updated.kind],
+        ["标题", issue.title, updated.title],
+        ["严重程度", issue.severity, updated.severity],
+        ["状态", issue.status, updated.status],
+        ["责任人", issue.ownerId, updated.ownerId],
+        ["自定义责任人", issue.ownerName, updated.ownerName],
+        ["截止日期", issue.dueDate, updated.dueDate],
+        ["解决方案", issue.resolution, updated.resolution],
+        ["解决时间", issue.resolvedAt, updated.resolvedAt],
+        ["解决人", issue.resolvedById, updated.resolvedById],
+      ]),
+    });
+    return updated;
+  }
+
+  async removeIssue(matterId: string, issueId: string, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    const issue = await this.requireIssue(matterId, issueId);
+    const result = await this.prisma.businessMatterIssue.update({
+      where: { id: issue.id },
+      data: { deletedAt: new Date() },
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.ISSUE_DELETED, `删除${this.issueKindLabel(issue.kind)}“${issue.title}”`, {
+      objectType: "ISSUE",
+      objectId: issue.id,
+      snapshot: { kind: issue.kind, title: issue.title, status: issue.status, ownerId: issue.ownerId },
+    });
+    return result;
+  }
+
+  async attachIssueDocuments(
+    matterId: string,
+    issueId: string,
+    dto: AttachBusinessDocumentsDto,
+    user: PublicUser,
+  ) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireIssue(matterId, issueId);
+    const documentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: { id: { in: documentIds }, deletedAt: null, status: { not: DocumentStatus.DELETED } },
+      select: { id: true, currentVersionId: true },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new BadRequestException("存在不存在或已删除的风险/问题附件");
+    }
+    const existing = await this.prisma.businessMatterIssueDocument.findMany({
+      where: { issueId, documentId: { in: documentIds } },
+      select: { documentId: true },
+    });
+    if (existing.length) {
+      throw new ConflictException("所选附件中包含已关联文件");
+    }
+    const result = await this.prisma.businessMatterIssueDocument.createMany({
+      data: documents.map((document) => ({
+        issueId,
+        documentId: document.id,
+        versionId: document.currentVersionId,
+        relationType: this.optionalText(dto.relationType) ?? "ATTACHMENT",
+      })),
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.ISSUE_DOCUMENT_ATTACHED, `为风险/问题关联 ${result.count} 份附件`, {
+      objectType: "ISSUE_DOCUMENT_LINK",
+      objectId: issueId,
+      related: { documentCount: result.count },
+    });
+    return { issueId, addedCount: result.count };
+  }
+
+  async detachIssueDocument(matterId: string, issueId: string, documentId: string, user: PublicUser) {
+    await this.businessMatters.requireEditableForRelatedData(matterId, user);
+    await this.requireIssue(matterId, issueId);
+    const link = await this.prisma.businessMatterIssueDocument.findFirst({ where: { issueId, documentId } });
+    if (!link) {
+      throw new NotFoundException("风险/问题附件关联不存在");
+    }
+    const result = await this.prisma.businessMatterIssueDocument.delete({
+      where: { issueId_documentId: { issueId, documentId } },
+    });
+    await this.logActivity(matterId, user, BusinessActivityAction.ISSUE_DOCUMENT_DETACHED, "取消风险/问题附件关联", {
+      objectType: "ISSUE_DOCUMENT_LINK",
+      objectId: issueId,
+      related: { documentId },
     });
     return result;
   }
@@ -1161,6 +1384,16 @@ export class BusinessWorkflowService {
     return task;
   }
 
+  private async requireIssue(matterId: string, issueId: string) {
+    const issue = await this.prisma.businessMatterIssue.findFirst({
+      where: { id: issueId, matterId, deletedAt: null },
+    });
+    if (!issue) {
+      throw new NotFoundException("风险或问题不存在");
+    }
+    return issue;
+  }
+
   private async requireFollowUp(matterId: string, followUpId: string) {
     const followUp = await this.prisma.businessMatterFollowUp.findFirst({ where: { id: followUpId, matterId, deletedAt: null } });
     if (!followUp) {
@@ -1295,6 +1528,22 @@ export class BusinessWorkflowService {
     return status === BusinessTaskStatus.TODO || status === BusinessTaskStatus.IN_PROGRESS;
   }
 
+  private validateIssueStatusTransition(current: BusinessIssueStatus, next: BusinessIssueStatus) {
+    const allowed: Record<BusinessIssueStatus, BusinessIssueStatus[]> = {
+      OPEN: [BusinessIssueStatus.OPEN, BusinessIssueStatus.IN_PROGRESS, BusinessIssueStatus.RESOLVED, BusinessIssueStatus.CANCELLED],
+      IN_PROGRESS: [BusinessIssueStatus.IN_PROGRESS, BusinessIssueStatus.OPEN, BusinessIssueStatus.RESOLVED, BusinessIssueStatus.CANCELLED],
+      RESOLVED: [BusinessIssueStatus.RESOLVED, BusinessIssueStatus.OPEN, BusinessIssueStatus.IN_PROGRESS],
+      CANCELLED: [BusinessIssueStatus.CANCELLED, BusinessIssueStatus.OPEN],
+    };
+    if (!allowed[current].includes(next)) {
+      throw new BadRequestException(`风险或问题状态不能从${current}变更为${next}`);
+    }
+  }
+
+  private isInitialIssueStatus(status: BusinessIssueStatus) {
+    return status === BusinessIssueStatus.OPEN || status === BusinessIssueStatus.IN_PROGRESS;
+  }
+
   private validateFinanceStatusTransition(current: BusinessFinanceStatus, next: BusinessFinanceStatus) {
     const allowed: Record<BusinessFinanceStatus, BusinessFinanceStatus[]> = {
       DRAFT: [BusinessFinanceStatus.DRAFT, BusinessFinanceStatus.PENDING, BusinessFinanceStatus.CANCELLED],
@@ -1366,6 +1615,21 @@ export class BusinessWorkflowService {
       createdBy: { select: personSelect },
       completedBy: { select: personSelect },
       cancelledBy: { select: personSelect },
+      documents: {
+        include: {
+          document: { include: { currentVersion: true, category: true, subcategory: true } },
+          version: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    };
+  }
+
+  private issueInclude(): Prisma.BusinessMatterIssueInclude {
+    return {
+      owner: { select: personSelect },
+      createdBy: { select: personSelect },
+      resolvedBy: { select: personSelect },
       documents: {
         include: {
           document: { include: { currentVersion: true, category: true, subcategory: true } },
@@ -1522,5 +1786,9 @@ export class BusinessWorkflowService {
       OTHER: "其他",
     };
     return labels[method] ?? "其他";
+  }
+
+  private issueKindLabel(kind: BusinessIssueKind) {
+    return kind === BusinessIssueKind.RISK ? "风险" : "问题";
   }
 }

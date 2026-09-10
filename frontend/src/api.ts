@@ -14,6 +14,8 @@ import type {
   BusinessFollowUpRecord,
   BusinessFinanceDocumentLink,
   BusinessFinanceRecord,
+  BusinessIssueDocumentLink,
+  BusinessIssueRecord,
   BusinessWorkflowDocumentLink,
   BusinessReminder,
   BusinessResponsibilityReport,
@@ -232,6 +234,45 @@ export async function detachBusinessTaskDocument(matterId: string, taskId: strin
   return request<BusinessWorkflowDocumentLink>({
     method: "DELETE",
     url: `/business-matters/${matterId}/tasks/${taskId}/documents/${documentId}`,
+  });
+}
+
+export async function listBusinessIssues(matterId: string, params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<BusinessIssueRecord>>({
+    method: "GET",
+    url: `/business-matters/${matterId}/issues`,
+    params: { page: 1, pageSize: 100, ...params },
+  });
+}
+
+export async function createBusinessIssue(matterId: string, payload: Record<string, unknown>) {
+  return request<BusinessIssueRecord>({ method: "POST", url: `/business-matters/${matterId}/issues`, data: payload });
+}
+
+export async function updateBusinessIssue(matterId: string, issueId: string, payload: Record<string, unknown>) {
+  return request<BusinessIssueRecord>({ method: "PATCH", url: `/business-matters/${matterId}/issues/${issueId}`, data: payload });
+}
+
+export async function deleteBusinessIssue(matterId: string, issueId: string) {
+  return request<BusinessIssueRecord>({ method: "DELETE", url: `/business-matters/${matterId}/issues/${issueId}` });
+}
+
+export async function attachBusinessIssueDocuments(
+  matterId: string,
+  issueId: string,
+  payload: { documentIds: string[]; relationType?: string },
+) {
+  return request<{ issueId: string; addedCount: number }>({
+    method: "POST",
+    url: `/business-matters/${matterId}/issues/${issueId}/documents`,
+    data: payload,
+  });
+}
+
+export async function detachBusinessIssueDocument(matterId: string, issueId: string, documentId: string) {
+  return request<BusinessIssueDocumentLink>({
+    method: "DELETE",
+    url: `/business-matters/${matterId}/issues/${issueId}/documents/${documentId}`,
   });
 }
 

@@ -127,6 +127,25 @@ enum BusinessMilestoneStatus {
   CANCELLED
 }
 
+enum BusinessIssueKind {
+  RISK
+  ISSUE
+}
+
+enum BusinessIssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BusinessIssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
 enum BusinessFollowUpMethod {
   CALL
   WECHAT
@@ -178,6 +197,11 @@ enum BusinessActivityAction {
   TASK_DOCUMENT_DETACHED
   FOLLOW_UP_DOCUMENT_ATTACHED
   FOLLOW_UP_DOCUMENT_DETACHED
+  ISSUE_CREATED
+  ISSUE_UPDATED
+  ISSUE_DELETED
+  ISSUE_DOCUMENT_ATTACHED
+  ISSUE_DOCUMENT_DETACHED
 }
 
 model User {
@@ -212,6 +236,9 @@ model User {
   ownedBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneOwner")
   createdBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneCreatedBy")
   completedBusinessMatterMilestones BusinessMatterMilestone[] @relation("BusinessMilestoneCompletedBy")
+  ownedBusinessMatterIssues BusinessMatterIssue[] @relation("BusinessIssueOwner")
+  createdBusinessMatterIssues BusinessMatterIssue[] @relation("BusinessIssueCreatedBy")
+  resolvedBusinessMatterIssues BusinessMatterIssue[] @relation("BusinessIssueResolvedBy")
   createdBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpCreatedBy")
   assignedBusinessFollowUps BusinessMatterFollowUp[] @relation("BusinessFollowUpNextAssignee")
   createdBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceCreatedBy")
@@ -337,6 +364,7 @@ model BusinessMatter {
   followUps   BusinessMatterFollowUp[]
   contract    BusinessMatterContract?
   financeRecords BusinessMatterFinanceRecord[]
+  issues      BusinessMatterIssue[]
   activities  BusinessMatterActivity[]
 
   @@index([type])
@@ -469,6 +497,53 @@ model BusinessMatterMilestone {
   @@index([ownerId, dueDate])
   @@index([deletedAt])
   @@map("business_matter_milestones")
+}
+
+model BusinessMatterIssue {
+  id            String              @id @default(uuid())
+  matterId      String              @map("matter_id")
+  kind          BusinessIssueKind
+  title         String
+  description   String?             @db.Text
+  severity      BusinessIssueSeverity @default(MEDIUM)
+  status        BusinessIssueStatus @default(OPEN)
+  ownerId       String?             @map("owner_id")
+  ownerName     String?             @map("owner_name")
+  dueDate       DateTime?           @map("due_date")
+  resolution    String?             @db.Text
+  resolvedAt    DateTime?           @map("resolved_at")
+  resolvedById  String?             @map("resolved_by_id")
+  createdById   String              @map("created_by_id")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  deletedAt     DateTime?           @map("deleted_at")
+  matter        BusinessMatter     @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  owner         User?               @relation("BusinessIssueOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  resolvedBy    User?               @relation("BusinessIssueResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdBy     User                @relation("BusinessIssueCreatedBy", fields: [createdById], references: [id])
+  documents     BusinessMatterIssueDocument[]
+
+  @@index([matterId, kind, status])
+  @@index([ownerId, status])
+  @@index([dueDate, status])
+  @@index([deletedAt])
+  @@map("business_matter_issues")
+}
+
+model BusinessMatterIssueDocument {
+  issueId     String              @map("issue_id")
+  documentId  String              @map("document_id")
+  versionId   String?             @map("version_id")
+  relationType String             @default("ATTACHMENT") @map("relation_type")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  issue       BusinessMatterIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  document    Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version     DocumentVersion?    @relation(fields: [versionId], references: [id], onDelete: SetNull)
+
+  @@id([issueId, documentId])
+  @@index([documentId])
+  @@index([versionId])
+  @@map("business_matter_issue_documents")
 }
 
 model BusinessMatterFollowUp {
@@ -674,6 +749,7 @@ model Document {
   businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
   businessTaskDocumentLinks BusinessMatterTaskDocument[]
   businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
+  businessIssueDocumentLinks BusinessMatterIssueDocument[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -709,6 +785,7 @@ model DocumentVersion {
   businessFinanceDocumentLinks BusinessMatterFinanceDocument[]
   businessTaskDocumentLinks BusinessMatterTaskDocument[]
   businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
+  businessIssueDocumentLinks BusinessMatterIssueDocument[]
 
   @@unique([documentId, versionNo])
   @@index([documentId])

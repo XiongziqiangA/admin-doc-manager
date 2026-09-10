@@ -4,6 +4,8 @@ import {
   BusinessContractStatus,
   BusinessFinanceKind,
   BusinessFinanceStatus,
+  BusinessIssueKind,
+  BusinessIssueStatus,
   BusinessMatterType,
   BusinessTaskStatus,
   UserRole,
@@ -62,6 +64,19 @@ describe("BusinessWorkflowService", () => {
       delete: vi.fn(),
     },
     businessMatterFollowUpDocument: {
+      findMany: vi.fn(),
+      createMany: vi.fn(),
+      findFirst: vi.fn(),
+      delete: vi.fn(),
+    },
+    businessMatterIssue: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    businessMatterIssueDocument: {
       findMany: vi.fn(),
       createMany: vi.fn(),
       findFirst: vi.fn(),
@@ -785,5 +800,117 @@ describe("BusinessWorkflowService", () => {
 
     prisma.businessMatterFollowUpDocument.findMany.mockResolvedValue([{ documentId: "document-2" }]);
     await expect(service.attachFollowUpDocuments("matter-1", "follow-up-1", { documentIds: ["document-2"] }, user)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("creates an issue for the matter owner and records its severity", async () => {
+    prisma.businessMatterIssue.create.mockResolvedValue({
+      id: "issue-1",
+      kind: BusinessIssueKind.ISSUE,
+      title: "供应商交付延期",
+      severity: "HIGH",
+      status: BusinessIssueStatus.OPEN,
+      ownerId: user.id,
+      ownerName: null,
+      dueDate: null,
+    });
+
+    await service.createIssue("matter-1", {
+      kind: BusinessIssueKind.ISSUE,
+      title: " 供应商交付延期 ",
+      severity: "HIGH",
+    }, user);
+
+    expect(prisma.businessMatterIssue.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        title: "供应商交付延期",
+        severity: "HIGH",
+        status: BusinessIssueStatus.OPEN,
+        ownerId: user.id,
+      }),
+    }));
+    expect(prisma.businessMatterActivity.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "ISSUE_CREATED" }),
+    }));
+  });
+
+  it("requires a resolution before an issue can be marked resolved", async () => {
+    prisma.businessMatterIssue.findFirst.mockResolvedValue({
+      id: "issue-1",
+      matterId: "matter-1",
+      kind: BusinessIssueKind.ISSUE,
+      title: "待处理问题",
+      severity: "MEDIUM",
+      status: BusinessIssueStatus.IN_PROGRESS,
+      ownerId: user.id,
+      ownerName: null,
+      dueDate: null,
+      resolution: null,
+      resolvedAt: null,
+      resolvedById: null,
+    });
+
+    await expect(service.updateIssue("matter-1", "issue-1", {
+      status: BusinessIssueStatus.RESOLVED,
+    }, user)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.businessMatterIssue.update).not.toHaveBeenCalled();
+  });
+
+  it("records the resolver and resolution when an issue is closed", async () => {
+    prisma.businessMatterIssue.findFirst.mockResolvedValue({
+      id: "issue-1",
+      matterId: "matter-1",
+      kind: BusinessIssueKind.RISK,
+      title: "预算风险",
+      severity: "HIGH",
+      status: BusinessIssueStatus.IN_PROGRESS,
+      ownerId: user.id,
+      ownerName: null,
+      dueDate: null,
+      resolution: null,
+      resolvedAt: null,
+      resolvedById: null,
+    });
+    prisma.businessMatterIssue.update.mockResolvedValue({
+      id: "issue-1",
+      kind: BusinessIssueKind.RISK,
+      title: "预算风险",
+      severity: "HIGH",
+      status: BusinessIssueStatus.RESOLVED,
+      ownerId: user.id,
+      ownerName: null,
+      resolution: "已完成预算复核",
+      resolvedById: user.id,
+      resolvedAt: new Date(),
+    });
+
+    await service.updateIssue("matter-1", "issue-1", {
+      status: BusinessIssueStatus.RESOLVED,
+      resolution: "已完成预算复核",
+    }, user);
+
+    expect(prisma.businessMatterIssue.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: BusinessIssueStatus.RESOLVED,
+        resolution: "已完成预算复核",
+        resolvedBy: { connect: { id: user.id } },
+      }),
+    }));
+  });
+
+  it("attaches current document versions to issues and rejects duplicate links", async () => {
+    prisma.businessMatterIssue.findFirst.mockResolvedValue({ id: "issue-1", matterId: "matter-1" });
+    prisma.document.findMany.mockResolvedValue([{ id: "document-3", currentVersionId: "version-3" }]);
+    prisma.businessMatterIssueDocument.findMany.mockResolvedValue([]);
+    prisma.businessMatterIssueDocument.createMany.mockResolvedValue({ count: 1 });
+
+    await service.attachIssueDocuments("matter-1", "issue-1", { documentIds: ["document-3"] }, user);
+
+    expect(prisma.businessMatterIssueDocument.createMany).toHaveBeenCalledWith({
+      data: [{ issueId: "issue-1", documentId: "document-3", versionId: "version-3", relationType: "ATTACHMENT" }],
+    });
+
+    prisma.businessMatterIssueDocument.findMany.mockResolvedValue([{ documentId: "document-3" }]);
+    await expect(service.attachIssueDocuments("matter-1", "issue-1", { documentIds: ["document-3"] }, user))
+      .rejects.toBeInstanceOf(ConflictException);
   });
 });
