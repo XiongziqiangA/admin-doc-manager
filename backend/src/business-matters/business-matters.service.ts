@@ -151,7 +151,7 @@ export class BusinessMattersService {
 
   async getProjectPlan(id: string) {
     const matter = await this.requireReadable(id);
-    const [stages, milestones, tasks] = await Promise.all([
+    const [stages, milestones, tasks, contract] = await Promise.all([
       this.prisma.businessMatterStage.findMany({
         where: { matterId: id, deletedAt: null },
         include: { owner: { select: personSelect }, createdBy: { select: personSelect } },
@@ -172,6 +172,16 @@ export class BusinessMattersService {
         select: { id: true, title: true, stageId: true, milestoneId: true, progress: true, status: true, dueDate: true },
         orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
       }),
+      this.prisma.businessMatterContract.findUnique({
+        where: { matterId: id },
+        select: {
+          id: true,
+          contractNo: true,
+          partyName: true,
+          expiresAt: true,
+          status: true,
+        },
+      }),
     ]);
     const summary = calculateProjectProgress({
       status: matter.status,
@@ -189,6 +199,7 @@ export class BusinessMattersService {
       })),
       milestones,
       tasks,
+      contract,
     };
   }
 

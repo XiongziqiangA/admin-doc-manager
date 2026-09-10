@@ -22,6 +22,18 @@ describe("BusinessMattersService", () => {
     businessMatterActivity: {
       create: vi.fn(),
     },
+    businessMatterStage: {
+      findMany: vi.fn(),
+    },
+    businessMatterMilestone: {
+      findMany: vi.fn(),
+    },
+    businessMatterTask: {
+      findMany: vi.fn(),
+    },
+    businessMatterContract: {
+      findUnique: vi.fn(),
+    },
     document: {
       findMany: vi.fn(),
     },
@@ -284,5 +296,23 @@ describe("BusinessMattersService", () => {
     await expect(service.update("matter-1", { title: "修改" }, user)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it("includes contract expiry data in the project plan for timeline views", async () => {
+    prisma.businessMatter.findFirst.mockResolvedValue({ id: "matter-1", status: BusinessMatterStatus.IN_PROGRESS, endDate: null });
+    prisma.businessMatterStage.findMany.mockResolvedValue([]);
+    prisma.businessMatterMilestone.findMany.mockResolvedValue([]);
+    prisma.businessMatterTask.findMany.mockResolvedValue([]);
+    prisma.businessMatterContract.findUnique.mockResolvedValue({
+      id: "contract-1",
+      contractNo: "C-001",
+      partyName: "合作单位",
+      expiresAt: new Date("2026-12-31T00:00:00.000Z"),
+      status: "ACTIVE",
+    });
+
+    const result = await service.getProjectPlan("matter-1");
+
+    expect(result.contract).toEqual(expect.objectContaining({ id: "contract-1", expiresAt: expect.any(Date) }));
   });
 });

@@ -386,6 +386,13 @@ export interface BusinessProjectPlan {
   stages: BusinessStageRecord[];
   milestones: BusinessMilestoneRecord[];
   tasks: Array<Pick<BusinessTaskRecord, "id" | "title" | "stageId" | "milestoneId" | "progress" | "status" | "dueDate">>;
+  contract: {
+    id: string;
+    contractNo: string | null;
+    partyName: string;
+    expiresAt: string | null;
+    status: BusinessContractStatus;
+  } | null;
 }
 
 export interface BusinessIssueDocumentLink {

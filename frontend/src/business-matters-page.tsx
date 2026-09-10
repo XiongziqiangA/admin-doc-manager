@@ -144,6 +144,9 @@ export function BusinessMattersPage({
   const [keyword, setKeyword] = useState("");
   const [type, setType] = useState<BusinessMatterType>();
   const [status, setStatus] = useState<BusinessMatterStatus>();
+  const [mainView, setMainView] = useState<"list" | "board">("list");
+  const [boardRecords, setBoardRecords] = useState<BusinessMatterRecord[]>([]);
+  const [boardLoading, setBoardLoading] = useState(false);
   const [selectedMatter, setSelectedMatter] = useState<BusinessMatterDetail | null>(null);
   const [selectedProjectPlan, setSelectedProjectPlan] = useState<BusinessProjectPlan | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -205,6 +208,34 @@ export function BusinessMattersPage({
     setAllMatters(items);
   };
 
+  const loadBoardMatters = async () => {
+    setBoardLoading(true);
+    try {
+      const items: BusinessMatterRecord[] = [];
+      let currentPage = 1;
+      let totalPages = 1;
+      while (currentPage <= totalPages) {
+        const result = await listBusinessMatters({
+          page: currentPage,
+          pageSize: 100,
+          keyword: keyword.trim() || undefined,
+          type,
+          status,
+          sortBy: "updatedAt",
+          sortOrder: "desc",
+        });
+        items.push(...result.items);
+        totalPages = result.pagination.totalPages || 1;
+        currentPage += 1;
+      }
+      setBoardRecords(items);
+    } catch (error) {
+      message.error(`项目看板加载失败：${formatApiError(error)}`);
+    } finally {
+      setBoardLoading(false);
+    }
+  };
+
   const loadUsers = async () => {
     if (!isAdmin || users.length) {
       return;
@@ -221,6 +252,12 @@ export function BusinessMattersPage({
     const timer = window.setTimeout(() => void loadMatters(), 250);
     return () => window.clearTimeout(timer);
   }, [keyword, type, status, page]);
+
+  useEffect(() => {
+    if (mainView === "board") {
+      void loadBoardMatters();
+    }
+  }, [mainView, keyword, type, status]);
 
   useEffect(() => {
     if (modalOpen) {
@@ -622,29 +659,38 @@ export function BusinessMattersPage({
             }}
             options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
           />
-          <Typography.Text type="secondary">共 {total} 个事项</Typography.Text>
-        </Space>
+        <Typography.Text type="secondary">共 {total} 个事项</Typography.Text>
+        <Segmented
+          value={mainView}
+          onChange={(value) => setMainView(value as "list" | "board")}
+          options={[{ value: "list", label: "列表" }, { value: "board", label: "项目看板" }]}
+        />
+      </Space>
       </section>
 
       <BusinessWorkflowOverviewPanel revision={workflowRevision} />
       <BusinessResponsibilityReportPanel currentUser={currentUser} users={users} />
 
-      <section className="page-band">
-        <Table
-          rowKey="id"
-          loading={loading}
-          dataSource={records}
-          columns={columns}
-          pagination={{
-            current: page,
-            pageSize: 20,
-            total,
-            showSizeChanger: false,
-            onChange: (nextPage) => setPage(nextPage),
-          }}
-          locale={{ emptyText: <Empty description="暂无项目或事项" /> }}
-        />
-      </section>
+      {mainView === "list" ? (
+        <section className="page-band">
+          <Table
+            rowKey="id"
+            loading={loading}
+            dataSource={records}
+            columns={columns}
+            pagination={{
+              current: page,
+              pageSize: 20,
+              total,
+              showSizeChanger: false,
+              onChange: (nextPage) => setPage(nextPage),
+            }}
+            locale={{ emptyText: <Empty description="暂无项目或事项" /> }}
+          />
+        </section>
+      ) : (
+        <ProjectMatterBoard records={boardRecords} loading={boardLoading} onOpen={openDetail} />
+      )}
 
       <Modal
         title={editingMatter ? "编辑事项" : "新建事项"}
@@ -919,6 +965,7 @@ export function BusinessMattersPage({
               onChanged={() => void refreshSelectedProject()}
             />
             <BusinessProjectPlanPanel
+              matter={selectedMatter}
               matterId={selectedMatter.id}
               plan={selectedProjectPlan}
               users={users}
@@ -978,6 +1025,54 @@ export function BusinessMattersPage({
         </Space>
       </Modal>
     </div>
+  );
+}
+
+function ProjectMatterBoard({
+  records,
+  loading,
+  onOpen,
+}: {
+  records: BusinessMatterRecord[];
+  loading: boolean;
+  onOpen: (record: BusinessMatterRecord) => void;
+}) {
+  const columns: Array<{ status: BusinessMatterStatus; title: string }> = [
+    { status: "PLANNING", title: "筹备中" },
+    { status: "IN_PROGRESS", title: "进行中" },
+    { status: "COMPLETED", title: "已完成" },
+    { status: "CANCELLED", title: "已取消" },
+  ];
+  return (
+    <section className="page-band business-matter-board" aria-label="项目看板">
+      {loading ? <div className="loading-state"><Spin /></div> : (
+        <div className="business-matter-board-columns">
+          {columns.map((column) => {
+            const items = records.filter((record) => record.status === column.status);
+            return (
+              <div className="business-matter-board-column" key={column.status}>
+                <div className="business-matter-board-heading">
+                  <Space size={6}><Typography.Text strong>{column.title}</Typography.Text><Tag color={statusColors[column.status]}>{items.length}</Tag></Space>
+                </div>
+                <div className="business-matter-board-body">
+                  {items.length ? items.map((record) => (
+                    <button type="button" className="business-matter-board-card" key={record.id} onClick={() => onOpen(record)}>
+                      <div className="business-matter-board-card-title">{record.title}</div>
+                      <Space wrap size={4}>
+                        <Tag>{typeLabels[record.type]}</Tag>
+                        {record.progressSummary ? <Tag color={healthColors[record.progressSummary.health]}>{record.progressSummary.progress}% · {healthLabels[record.progressSummary.health]}</Tag> : null}
+                      </Space>
+                      <Typography.Text type="secondary">负责人：{record.ownerName || record.owner?.realName || "未指定"}</Typography.Text>
+                      <Typography.Text type="secondary">更新：{formatDateOnly(record.updatedAt)}</Typography.Text>
+                    </button>
+                  )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无事项" />}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

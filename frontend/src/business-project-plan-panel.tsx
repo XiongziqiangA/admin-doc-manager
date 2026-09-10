@@ -1,4 +1,6 @@
 import {
+  AppstoreOutlined,
+  ClockCircleOutlined,
   DeleteOutlined,
   EditOutlined,
   FlagOutlined,
@@ -17,6 +19,7 @@ import {
   Segmented,
   Space,
   Tag,
+  Timeline,
   Typography,
   message,
 } from "antd";
@@ -34,6 +37,7 @@ import {
 import type {
   BusinessMilestoneRecord,
   BusinessMilestoneStatus,
+  BusinessMatterDetail,
   BusinessProjectHealth,
   BusinessProjectPlan,
   BusinessStageRecord,
@@ -105,6 +109,7 @@ interface MilestoneFormValues {
 type PersonMode = "master" | "custom";
 
 interface BusinessProjectPlanPanelProps {
+  matter: BusinessMatterDetail;
   matterId: string;
   plan: BusinessProjectPlan | null;
   users: UserRecord[];
@@ -112,7 +117,7 @@ interface BusinessProjectPlanPanelProps {
   onChanged: () => void;
 }
 
-export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, onChanged }: BusinessProjectPlanPanelProps) {
+export function BusinessProjectPlanPanel({ matter, matterId, plan, users, currentUser, onChanged }: BusinessProjectPlanPanelProps) {
   const [stageOpen, setStageOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<BusinessStageRecord | null>(null);
   const [stageSubmitting, setStageSubmitting] = useState(false);
@@ -123,6 +128,7 @@ export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, o
   const [milestoneOwnerMode, setMilestoneOwnerMode] = useState<PersonMode>("master");
   const [stageForm] = Form.useForm<StageFormValues>();
   const [milestoneForm] = Form.useForm<MilestoneFormValues>();
+  const [view, setView] = useState<"list" | "board" | "timeline">("list");
   const isAdmin = currentUser.role === "ADMIN";
 
   const openStageForm = (stage?: BusinessStageRecord) => {
@@ -264,6 +270,16 @@ export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, o
           <Typography.Text type="secondary">阶段、里程碑和任务进度会自动汇总到项目整体进度。</Typography.Text>
         </div>
         <Space wrap>
+          <Segmented
+            size="small"
+            value={view}
+            onChange={(value) => setView(value as "list" | "board" | "timeline")}
+            options={[
+              { value: "list", label: "列表" },
+              { value: "board", label: <><AppstoreOutlined /> 看板</> },
+              { value: "timeline", label: <><ClockCircleOutlined /> 时间线</> },
+            ]}
+          />
           <Button size="small" icon={<FlagOutlined />} onClick={() => openMilestoneForm()}>新增里程碑</Button>
           <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => openStageForm()}>新增阶段</Button>
         </Space>
@@ -283,7 +299,7 @@ export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, o
               {plan.summary.overdueMilestoneCount ? <Tag color="red">逾期里程碑 {plan.summary.overdueMilestoneCount}</Tag> : null}
             </Space>
           </div>
-          <div className="business-project-plan-columns">
+          {view === "list" ? <div className="business-project-plan-columns">
             <div>
               <Typography.Text strong>项目阶段</Typography.Text>
               {plan.stages.length ? (
@@ -327,7 +343,7 @@ export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, o
                 />
               ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无里程碑" />}
             </div>
-          </div>
+          </div> : view === "board" ? <ProjectStageBoard plan={plan} /> : <ProjectTimeline matter={matter} plan={plan} />}
         </>
       ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="项目计划加载中" />}
 
@@ -368,4 +384,108 @@ export function BusinessProjectPlanPanel({ matterId, plan, users, currentUser, o
       </Modal>
     </section>
   );
+}
+
+interface ProjectTimelineEvent {
+  date: string | null;
+  title: string;
+  description: string;
+  color: string;
+}
+
+function ProjectStageBoard({ plan }: { plan: BusinessProjectPlan }) {
+  const columns: Array<{ status: BusinessStageStatus; title: string }> = [
+    { status: "PLANNED", title: "未开始" },
+    { status: "IN_PROGRESS", title: "进行中" },
+    { status: "COMPLETED", title: "已完成" },
+    { status: "CANCELLED", title: "已取消" },
+  ];
+  return (
+    <div className="business-project-board">
+      {columns.map((column) => {
+        const stages = plan.stages.filter((stage) => stage.status === column.status);
+        return (
+          <div className="business-project-board-column" key={column.status}>
+            <div className="business-project-board-column-heading">
+              <Typography.Text strong>{column.title}</Typography.Text>
+              <Tag>{stages.length}</Tag>
+            </div>
+            <div className="business-project-board-column-body">
+              {stages.length ? stages.map((stage) => (
+                <div className="business-project-board-card" key={stage.id}>
+                  <Space wrap size={6}>
+                    <Typography.Text strong>{stage.name}</Typography.Text>
+                    <Tag color={stageStatusColors[stage.status]}>{stage.calculatedProgress}%</Tag>
+                  </Space>
+                  <Progress percent={stage.calculatedProgress} size="small" showInfo={false} />
+                  <Typography.Text type="secondary">
+                    {stage.ownerName || stage.owner?.realName || "事项负责人"} · 任务 {stage.taskCount} 个
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    {stage.startDate?.slice(0, 10) || "未定开始"} 至 {stage.endDate?.slice(0, 10) || "未定结束"}
+                  </Typography.Text>
+                  {plan.milestones.filter((milestone) => milestone.stageId === stage.id).map((milestone) => (
+                    <Typography.Text type="secondary" key={milestone.id}>里程碑：{milestone.title}</Typography.Text>
+                  ))}
+                </div>
+              )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无阶段" />}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProjectTimeline({ matter, plan }: { matter: BusinessMatterDetail; plan: BusinessProjectPlan }) {
+  const events: ProjectTimelineEvent[] = [];
+  if (matter.startDate) {
+    events.push({ date: matter.startDate, title: "项目开始", description: matter.title, color: "blue" });
+  }
+  if (matter.endDate) {
+    events.push({ date: matter.endDate, title: "项目结束计划", description: `${matter.title} · 当前状态：${matter.status}`, color: "blue" });
+  }
+  for (const stage of plan.stages) {
+    if (stage.startDate) events.push({ date: stage.startDate, title: `阶段开始：${stage.name}`, description: `进度 ${stage.calculatedProgress}% · ${stage.ownerName || stage.owner?.realName || "事项负责人"}`, color: stage.status === "COMPLETED" ? "green" : "blue" });
+    if (stage.endDate) events.push({ date: stage.endDate, title: `阶段结束计划：${stage.name}`, description: `阶段状态：${stageStatusLabels[stage.status]}`, color: stage.status === "COMPLETED" ? "green" : "orange" });
+  }
+  for (const milestone of plan.milestones) {
+    if (milestone.dueDate) events.push({ date: milestone.dueDate, title: `里程碑：${milestone.title}`, description: `${milestone.stage?.name || "未指定阶段"} · ${milestoneStatusLabels[milestone.status]}`, color: milestone.status === "COMPLETED" ? "green" : milestone.status === "CANCELLED" ? "gray" : "orange" });
+  }
+  for (const task of plan.tasks) {
+    if (task.dueDate) events.push({ date: task.dueDate, title: `任务：${task.title}`, description: `进度 ${task.progress}% · ${taskStatusLabel(task.status)}`, color: task.status === "COMPLETED" ? "green" : task.status === "CANCELLED" ? "gray" : "blue" });
+  }
+  if (plan.contract?.expiresAt) {
+    events.push({ date: plan.contract.expiresAt, title: `合同到期：${plan.contract.partyName}`, description: `${plan.contract.contractNo || "未填写合同编号"} · 状态：${contractStatusLabel(plan.contract.status)}`, color: "purple" });
+  }
+  events.sort((left, right) => (left.date ? new Date(left.date).getTime() : Number.MAX_SAFE_INTEGER) - (right.date ? new Date(right.date).getTime() : Number.MAX_SAFE_INTEGER));
+
+  return events.length ? (
+    <div className="business-project-timeline">
+      <Typography.Text type="secondary">按计划日期排序，未设置日期的节点不会出现在时间线上。</Typography.Text>
+      <Timeline
+        items={events.map((event) => ({
+          color: event.color,
+          children: (
+            <div className="business-project-timeline-item">
+              <Typography.Text strong>{event.title}</Typography.Text>
+              <Typography.Text type="secondary">{event.date ? formatTimelineDate(event.date) : "未设置日期"} · {event.description}</Typography.Text>
+            </div>
+          ),
+        }))}
+      />
+    </div>
+  ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可展示的时间节点" />;
+}
+
+function taskStatusLabel(status: string) {
+  return ({ TODO: "待处理", IN_PROGRESS: "进行中", COMPLETED: "已完成", CANCELLED: "已取消" } as Record<string, string>)[status] ?? status;
+}
+
+function contractStatusLabel(status: string) {
+  return ({ DRAFT: "草稿", ACTIVE: "生效中", EXPIRED: "已到期", TERMINATED: "已终止" } as Record<string, string>)[status] ?? status;
+}
+
+function formatTimelineDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(new Date(value));
 }

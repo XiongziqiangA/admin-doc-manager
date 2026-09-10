@@ -375,6 +375,100 @@ body {
   gap: 16px;
 }
 
+.business-project-board {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.business-project-board-column,
+.business-matter-board-column {
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.business-project-board-column-heading,
+.business-matter-board-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.business-project-board-column-body,
+.business-matter-board-body {
+  display: flex;
+  min-height: 120px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.business-project-board-card,
+.business-matter-board-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #dbe3ec;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.business-project-board-card .ant-typography,
+.business-matter-board-card .ant-typography {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.business-project-timeline {
+  padding: 16px 8px 4px;
+}
+
+.business-project-timeline .ant-timeline {
+  margin-top: 18px;
+}
+
+.business-project-timeline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.business-matter-board-columns {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.business-matter-board-card {
+  width: 100%;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.business-matter-board-card:hover {
+  border-color: #1677ff;
+  box-shadow: 0 2px 8px rgb(22 119 255 / 12%);
+}
+
+.business-matter-board-card-title {
+  width: 100%;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .business-workflow-tab-section {
   min-width: 0;
 }
@@ -1261,6 +1355,11 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .business-project-board,
+  .business-matter-board-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .business-project-progress-summary {
     grid-template-columns: 1fr;
   }
@@ -1314,6 +1413,11 @@ body {
   }
 
   .business-matter-reference-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-project-board,
+  .business-matter-board-columns {
     grid-template-columns: 1fr;
   }
 
