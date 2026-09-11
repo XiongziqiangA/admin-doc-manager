@@ -204,6 +204,71 @@ enum BusinessActivityAction {
   ISSUE_DOCUMENT_DETACHED
 }
 
+enum AssetReservationStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  CANCELLED
+  REJECTED
+  EXPIRED
+}
+
+enum AssetBorrowStatus {
+  REQUESTED
+  APPROVED
+  ACTIVE
+  RETURN_PENDING
+  RETURNED
+  REJECTED
+  CANCELLED
+}
+
+enum AssetHandoverType {
+  CHECKOUT
+  RETURN
+  TRANSFER
+}
+
+enum AssetHandoverStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+enum AssetTransferStatus {
+  PENDING
+  APPROVED
+  IN_TRANSIT
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalBusinessType {
+  ASSET_RESERVATION
+  ASSET_BORROW
+  ASSET_TRANSFER
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalActionType {
+  SUBMIT
+  APPROVE
+  REJECT
+  CANCEL
+}
+
+enum OperationResult {
+  SUCCESS
+  FAILURE
+}
+
 model User {
   id                    String                 @id @default(uuid())
   username              String                 @unique
@@ -263,6 +328,20 @@ model User {
   usingAssets           Asset[]                  @relation("AssetUser")
   submittedAssets       PendingAsset[]           @relation("PendingAssetSubmittedBy")
   reviewedAssets        PendingAsset[]           @relation("PendingAssetReviewedBy")
+  assetReservations     AssetReservation[]       @relation("AssetReservationApplicant")
+  assetBorrows          AssetBorrowRecord[]      @relation("AssetBorrowApplicant")
+  createdHandovers      AssetHandoverRecord[]    @relation("AssetHandoverCreatedBy")
+  handoversFrom         AssetHandoverRecord[]    @relation("AssetHandoverFromUser")
+  handoversTo           AssetHandoverRecord[]    @relation("AssetHandoverToUser")
+  createdTransfers      AssetTransfer[]          @relation("AssetTransferCreatedBy")
+  transfersFromOwner    AssetTransfer[]          @relation("AssetTransferFromOwner")
+  transfersToOwner      AssetTransfer[]          @relation("AssetTransferToOwner")
+  appliedApprovals      Approval[]               @relation("ApprovalApplicant")
+  assignedApprovals     Approval[]               @relation("ApprovalAssignee")
+  approvalActions       ApprovalAction[]         @relation("ApprovalActionActor")
+  assetEvents           AssetEvent[]             @relation("AssetEventActor")
+  auditLogs             AuditLog[]               @relation("AuditActor")
+  idempotencyRecords    IdempotencyRecord[]
 
   @@map("users")
   @@index([organizationId])
@@ -285,6 +364,13 @@ model Organization {
   assets      Asset[]
   pendingAssets PendingAsset[]
   assetDocumentLinks AssetDocument[]
+  assetReservations AssetReservation[]
+  assetBorrows      AssetBorrowRecord[]
+  assetTransfers    AssetTransfer[]
+  approvals         Approval[]
+  assetEvents       AssetEvent[]
+  auditLogs         AuditLog[]
+  idempotencyRecords IdempotencyRecord[]
 
   @@index([enabled])
   @@map("organizations")
@@ -402,6 +488,8 @@ model Department {
   documents   Document[]
   businessMatters BusinessMatter[]
   assets      Asset[]
+  transfersFrom AssetTransfer[] @relation("AssetTransferFromDepartment")
+  transfersTo   AssetTransfer[] @relation("AssetTransferToDepartment")
 
   @@index([parentId])
   @@map("departments")
@@ -500,6 +588,8 @@ model BusinessMatter {
   issues      BusinessMatterIssue[]
   activities  BusinessMatterActivity[]
   assets      Asset[]
+  assetReservations AssetReservation[]
+  assetBorrows      AssetBorrowRecord[]
 
   @@index([type])
   @@index([status])
@@ -545,6 +635,8 @@ model Location {
   parent         Location?   @relation("LocationTree", fields: [parentId], references: [id], onDelete: SetNull)
   children       Location[]  @relation("LocationTree")
   assets         Asset[]
+  transfersFrom  AssetTransfer[] @relation("AssetTransferFromLocation")
+  transfersTo    AssetTransfer[] @relation("AssetTransferToLocation")
 
   @@unique([organizationId, code])
   @@index([organizationId, enabled])
@@ -590,6 +682,11 @@ model Asset {
   createdBy       User         @relation("AssetCreatedBy", fields: [createdById], references: [id])
   identifiers     AssetIdentifier[]
   documents       AssetDocument[]
+  reservations    AssetReservation[]
+  borrows         AssetBorrowRecord[]
+  handovers       AssetHandoverRecord[]
+  transfers       AssetTransfer[]
+  events          AssetEvent[]
 
   @@unique([organizationId, assetCode])
   @@unique([organizationId, serialNumber])
@@ -651,6 +748,224 @@ model PendingAsset {
   @@index([organizationId, status, createdAt])
   @@index([submittedById])
   @@map("pending_assets")
+}
+
+model AssetReservation {
+  id             String                 @id @default(uuid())
+  organizationId String                 @map("organization_id")
+  assetId        String                 @map("asset_id")
+  applicantId    String                 @map("applicant_id")
+  businessMatterId String?              @map("business_matter_id")
+  approvalId     String?                @unique @map("approval_id")
+  startAt        DateTime               @map("start_at")
+  endAt          DateTime               @map("end_at")
+  purpose        String
+  status         AssetReservationStatus @default(PENDING)
+  cancelReason   String?                @map("cancel_reason")
+  cancelledAt    DateTime?              @map("cancelled_at")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          Asset                  @relation(fields: [assetId], references: [id])
+  applicant      User                   @relation("AssetReservationApplicant", fields: [applicantId], references: [id])
+  businessMatter BusinessMatter?        @relation(fields: [businessMatterId], references: [id], onDelete: SetNull)
+  approval       Approval?              @relation("ReservationApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([assetId, startAt, endAt, status])
+  @@index([applicantId, status])
+  @@index([businessMatterId])
+  @@map("asset_reservations")
+}
+
+model AssetBorrowRecord {
+  id             String            @id @default(uuid())
+  organizationId String            @map("organization_id")
+  assetId        String            @map("asset_id")
+  applicantId    String            @map("applicant_id")
+  businessMatterId String?         @map("business_matter_id")
+  approvalId     String?           @unique @map("approval_id")
+  borrowStart    DateTime          @map("borrow_start")
+  borrowEnd      DateTime          @map("borrow_end")
+  actualReturnAt DateTime?         @map("actual_return_at")
+  purpose        String
+  note           String?
+  status         AssetBorrowStatus @default(REQUESTED)
+  cancelReason   String?           @map("cancel_reason")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          Asset             @relation(fields: [assetId], references: [id])
+  applicant      User              @relation("AssetBorrowApplicant", fields: [applicantId], references: [id])
+  businessMatter BusinessMatter?   @relation(fields: [businessMatterId], references: [id], onDelete: SetNull)
+  approval       Approval?         @relation("BorrowApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  handovers      AssetHandoverRecord[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([assetId, borrowStart, borrowEnd, status])
+  @@index([applicantId, status])
+  @@index([businessMatterId])
+  @@map("asset_borrow_records")
+}
+
+model AssetHandoverRecord {
+  id             String              @id @default(uuid())
+  assetId        String              @map("asset_id")
+  borrowId       String?             @map("borrow_id")
+  transferId     String?             @map("transfer_id")
+  fromUserId     String?             @map("from_user_id")
+  toUserId       String?             @map("to_user_id")
+  handoverType   AssetHandoverType   @map("handover_type")
+  itemsSnapshot  Json                @default("[]") @map("items_snapshot")
+  note           String?
+  status         AssetHandoverStatus @default(DRAFT)
+  createdById    String              @map("created_by_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  confirmedAt    DateTime?           @map("confirmed_at")
+  asset          Asset               @relation(fields: [assetId], references: [id])
+  borrow         AssetBorrowRecord?  @relation(fields: [borrowId], references: [id], onDelete: SetNull)
+  transfer       AssetTransfer?      @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  fromUser       User?               @relation("AssetHandoverFromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser         User?               @relation("AssetHandoverToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  createdBy      User                @relation("AssetHandoverCreatedBy", fields: [createdById], references: [id])
+
+  @@index([assetId, createdAt])
+  @@index([borrowId])
+  @@index([transferId])
+  @@map("asset_handover_records")
+}
+
+model AssetTransfer {
+  id               String              @id @default(uuid())
+  organizationId   String              @map("organization_id")
+  assetId          String              @map("asset_id")
+  approvalId       String?             @unique @map("approval_id")
+  fromDepartmentId String?             @map("from_department_id")
+  toDepartmentId   String?             @map("to_department_id")
+  fromLocationId   String?             @map("from_location_id")
+  toLocationId     String?             @map("to_location_id")
+  fromOwnerId      String?             @map("from_owner_id")
+  toOwnerId        String?             @map("to_owner_id")
+  reason           String
+  status           AssetTransferStatus @default(PENDING)
+  createdById      String              @map("created_by_id")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  completedAt      DateTime?           @map("completed_at")
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset            Asset               @relation(fields: [assetId], references: [id])
+  approval         Approval?           @relation("TransferApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  fromDepartment   Department?         @relation("AssetTransferFromDepartment", fields: [fromDepartmentId], references: [id], onDelete: SetNull)
+  toDepartment     Department?         @relation("AssetTransferToDepartment", fields: [toDepartmentId], references: [id], onDelete: SetNull)
+  fromLocation     Location?           @relation("AssetTransferFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation       Location?           @relation("AssetTransferToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  fromOwner        User?               @relation("AssetTransferFromOwner", fields: [fromOwnerId], references: [id], onDelete: SetNull)
+  toOwner          User?               @relation("AssetTransferToOwner", fields: [toOwnerId], references: [id], onDelete: SetNull)
+  createdBy        User                @relation("AssetTransferCreatedBy", fields: [createdById], references: [id])
+  handovers        AssetHandoverRecord[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([assetId, status])
+  @@map("asset_transfers")
+}
+
+model Approval {
+  id             String               @id @default(uuid())
+  organizationId String               @map("organization_id")
+  businessType   ApprovalBusinessType @map("business_type")
+  businessId     String               @map("business_id")
+  applicantId    String               @map("applicant_id")
+  assignedToId   String?              @map("assigned_to_id")
+  currentNode    String               @default("ADMIN_REVIEW") @map("current_node")
+  status         ApprovalStatus       @default(PENDING)
+  comment        String?
+  createdAt      DateTime             @default(now()) @map("created_at")
+  completedAt    DateTime?            @map("completed_at")
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicant      User                 @relation("ApprovalApplicant", fields: [applicantId], references: [id])
+  assignedTo     User?                @relation("ApprovalAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  actions        ApprovalAction[]
+  reservation    AssetReservation?    @relation("ReservationApproval")
+  borrow         AssetBorrowRecord?   @relation("BorrowApproval")
+  transfer       AssetTransfer?       @relation("TransferApproval")
+
+  @@unique([organizationId, businessType, businessId])
+  @@index([organizationId, status, createdAt])
+  @@index([applicantId, status])
+  @@index([assignedToId, status])
+  @@map("approvals")
+}
+
+model ApprovalAction {
+  id         String             @id @default(uuid())
+  approvalId String             @map("approval_id")
+  actorId    String             @map("actor_id")
+  action     ApprovalActionType
+  comment    String?
+  createdAt  DateTime           @default(now()) @map("created_at")
+  approval   Approval           @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  actor      User               @relation("ApprovalActionActor", fields: [actorId], references: [id])
+
+  @@index([approvalId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("approval_actions")
+}
+
+model AssetEvent {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  assetId        String       @map("asset_id")
+  actorId        String?      @map("actor_id")
+  eventType      String       @map("event_type")
+  summary        String
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  actor          User?        @relation("AssetEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([assetId, createdAt])
+  @@map("asset_events")
+}
+
+model AuditLog {
+  id             String          @id @default(uuid())
+  organizationId String          @map("organization_id")
+  actorId        String?         @map("actor_id")
+  action         String
+  targetType     String          @map("target_type")
+  targetId       String          @map("target_id")
+  beforeValue    Json?           @map("before_value")
+  afterValue     Json?           @map("after_value")
+  result         OperationResult @default(SUCCESS)
+  requestId      String?         @map("request_id")
+  ipAddress      String?         @map("ip_address")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor          User?           @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model IdempotencyRecord {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  operation      String
+  key            String
+  requestDigest  String       @map("request_digest")
+  responseBody   Json?        @map("response_body")
+  responseStatus Int?         @map("response_status")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, operation, key])
+  @@index([createdAt])
+  @@map("idempotency_records")
 }
 
 model BusinessMatterDocument {
