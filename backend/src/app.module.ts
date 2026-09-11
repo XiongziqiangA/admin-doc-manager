@@ -5,6 +5,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AuthModule } from "./auth/auth.module";
 import { AuthorizationModule } from "./authorization/authorization.module";
+import { AssetCirculationModule } from "./asset-circulation/asset-circulation.module";
 import { AssetsModule } from "./assets/assets.module";
 import { BusinessMattersModule } from "./business-matters/business-matters.module";
 import { BusinessWorkflowModule } from "./business-workflow/business-workflow.module";
@@ -26,6 +27,7 @@ import { UsersModule } from "./users/users.module";
     PrismaModule,
     AuthModule,
     AuthorizationModule,
+    AssetCirculationModule,
     AssetsModule,
     BusinessMattersModule,
     BusinessWorkflowModule,
