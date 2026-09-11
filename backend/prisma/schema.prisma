@@ -208,6 +208,7 @@ enum AssetReservationStatus {
   PENDING
   APPROVED
   ACTIVE
+  COMPLETED
   CANCELLED
   REJECTED
   EXPIRED
@@ -770,6 +771,7 @@ model AssetReservation {
   applicant      User                   @relation("AssetReservationApplicant", fields: [applicantId], references: [id])
   businessMatter BusinessMatter?        @relation(fields: [businessMatterId], references: [id], onDelete: SetNull)
   approval       Approval?              @relation("ReservationApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  borrowRecord   AssetBorrowRecord?
 
   @@index([organizationId, status, createdAt])
   @@index([assetId, startAt, endAt, status])
@@ -783,6 +785,7 @@ model AssetBorrowRecord {
   organizationId String            @map("organization_id")
   assetId        String            @map("asset_id")
   applicantId    String            @map("applicant_id")
+  reservationId  String?           @unique @map("reservation_id")
   businessMatterId String?         @map("business_matter_id")
   approvalId     String?           @unique @map("approval_id")
   borrowStart    DateTime          @map("borrow_start")
@@ -797,6 +800,7 @@ model AssetBorrowRecord {
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   asset          Asset             @relation(fields: [assetId], references: [id])
   applicant      User              @relation("AssetBorrowApplicant", fields: [applicantId], references: [id])
+  reservation    AssetReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   businessMatter BusinessMatter?   @relation(fields: [businessMatterId], references: [id], onDelete: SetNull)
   approval       Approval?         @relation("BorrowApproval", fields: [approvalId], references: [id], onDelete: SetNull)
   handovers      AssetHandoverRecord[]
@@ -804,6 +808,7 @@ model AssetBorrowRecord {
   @@index([organizationId, status, createdAt])
   @@index([assetId, borrowStart, borrowEnd, status])
   @@index([applicantId, status])
+  @@index([reservationId])
   @@index([businessMatterId])
   @@map("asset_borrow_records")
 }
