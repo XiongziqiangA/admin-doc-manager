@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { DocumentStatus, Prisma } from "@prisma/client";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { PublicUser } from "../users/user.presenter";
 import { EmbeddingService } from "./embedding.service";
 import { CONTENT_INDEX_STATUS } from "./document-content.types";
 
@@ -31,7 +32,11 @@ export class SearchAssistantService {
     private readonly embeddingService: EmbeddingService,
   ) {}
 
-  async search(query: string, limit: number) {
+  async search(user: PublicUser, query: string, limit: number) {
+    if (!user.organizationId) {
+      throw new BadRequestException("当前账号尚未绑定企业");
+    }
+    const organizationId = user.organizationId;
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       throw new BadRequestException("请输入检索内容");
@@ -42,11 +47,12 @@ export class SearchAssistantService {
       where: { deletedAt: null },
       select: { id: true, name: true, parentId: true },
     });
-    const contentMatchIds = await this.findContentMatchIds(terms);
+    const contentMatchIds = await this.findContentMatchIds(terms, organizationId);
     const candidates = await this.prisma.document.findMany({
       where: {
         deletedAt: null,
         status: { not: DocumentStatus.DELETED },
+        creator: { organizationId },
       },
       select: {
         id: true,
@@ -84,6 +90,7 @@ export class SearchAssistantService {
         ? [{ documentId: item.candidate.id, versionId: item.candidate.currentVersion.id }]
         : []),
       terms,
+      organizationId,
     );
     const results = scored.map((item) => ({
         documentId: item.candidate.id,
@@ -150,7 +157,7 @@ export class SearchAssistantService {
     return `${candidate.title}（${candidate.currentVersion?.fileExt || "文件"}）`;
   }
 
-  private async findContentMatchIds(terms: string[]) {
+  private async findContentMatchIds(terms: string[], organizationId: string) {
     if (!terms.length) {
       return new Set<string>();
     }
@@ -162,6 +169,7 @@ export class SearchAssistantService {
             is: {
               deletedAt: null,
               status: { not: DocumentStatus.DELETED },
+              creator: { organizationId },
             },
           },
         },
@@ -178,6 +186,7 @@ export class SearchAssistantService {
   private async loadSnippets(
     versions: Array<{ documentId: string; versionId: string }>,
     terms: string[],
+    organizationId: string,
   ) {
     if (!versions.length) {
       return new Map<string, string>();
@@ -186,6 +195,7 @@ export class SearchAssistantService {
     const chunks = await this.prisma.documentContentChunk.findMany({
       where: {
         documentId: { in: versions.map((item) => item.documentId) },
+        document: { creator: { organizationId } },
         OR: versions.map((item) => ({ documentId: item.documentId, versionId: item.versionId })),
         ...(terms.length
           ? { AND: [{ OR: terms.map((term) => ({ content: { contains: term, mode: "insensitive" as const } })) }] }

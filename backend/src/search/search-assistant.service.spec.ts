@@ -2,6 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SearchAssistantService } from "./search-assistant.service";
 import { BadRequestException } from "@nestjs/common";
+import { UserRole, UserStatus } from "@prisma/client";
+
+const employee = {
+  id: "user-1",
+  username: "employee",
+  realName: "员工",
+  role: UserRole.EMPLOYEE,
+  status: UserStatus.ACTIVE,
+  organizationId: "org-1",
+  departmentId: null,
+  phone: null,
+  email: null,
+  createdAt: new Date("2026-09-11T00:00:00.000Z"),
+  updatedAt: new Date("2026-09-11T00:00:00.000Z"),
+} as const;
 
 describe("SearchAssistantService", () => {
   const candidate = {
@@ -40,7 +55,7 @@ describe("SearchAssistantService", () => {
     const embeddings = { embed: vi.fn().mockResolvedValue(null) };
     const service = new SearchAssistantService(prisma as never, embeddings as never);
 
-    const result = await service.search("我界智能 合同", 10);
+    const result = await service.search(employee, "我界智能 合同", 10);
 
     expect(result.mode).toBe("keyword");
     expect(result.results[0]).toEqual(expect.objectContaining({
@@ -74,7 +89,7 @@ describe("SearchAssistantService", () => {
     const embeddings = { embed: vi.fn().mockResolvedValue({ embedding: [1, 0], model: "test" }) };
     const service = new SearchAssistantService(prisma as never, embeddings as never);
 
-    const result = await service.search("找合同", 10);
+    const result = await service.search(employee, "找合同", 10);
 
     expect(result.mode).toBe("semantic");
     expect(result.results[0].matchedBy).toContain("文件内容语义");
@@ -106,7 +121,7 @@ describe("SearchAssistantService", () => {
     const embeddings = { embed: vi.fn().mockResolvedValue(null) };
     const service = new SearchAssistantService(prisma as never, embeddings as never);
 
-    const result = await service.search("我界智能", 10);
+    const result = await service.search(employee, "我界智能", 10);
 
     expect(result.results[0].snippet).toContain("我界智能");
     const candidateQuery = prisma.document.findMany.mock.calls[0][0];
@@ -124,7 +139,25 @@ describe("SearchAssistantService", () => {
     };
     const service = new SearchAssistantService(prisma as never, { embed: vi.fn() } as never);
 
-    await expect(service.search("   ", 10)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.search(employee, "   ", 10)).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.document.findMany).not.toHaveBeenCalled();
+  });
+
+  it("scopes candidate and content queries to the current enterprise", async () => {
+    const prisma = {
+      category: { findMany: vi.fn().mockResolvedValue([]) },
+      document: { findMany: vi.fn().mockResolvedValue([]) },
+      documentContentChunk: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    const service = new SearchAssistantService(prisma as never, { embed: vi.fn().mockResolvedValue(null) } as never);
+
+    await service.search(employee, "合同", 10);
+
+    expect(prisma.document.findMany.mock.calls[0][0].where).toEqual(expect.objectContaining({
+      creator: { organizationId: "org-1" },
+    }));
+    expect(prisma.documentContentChunk.findMany.mock.calls[0][0].where.version.currentFor.is).toEqual(expect.objectContaining({
+      creator: { organizationId: "org-1" },
+    }));
   });
 });
