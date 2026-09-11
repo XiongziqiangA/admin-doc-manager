@@ -5,6 +5,7 @@ import {
   ApprovalStatus,
   AssetBorrowStatus,
   AssetReservationStatus,
+  AssetTransferStatus,
   Prisma,
   UserRole,
 } from "@prisma/client";
@@ -33,7 +34,7 @@ const APPROVAL_INCLUDE = {
     include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
   },
   transfer: {
-    include: { asset: { select: { id: true, assetCode: true, name: true, resourceStatus: true } } },
+    include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
   },
 } satisfies Prisma.ApprovalInclude;
 
@@ -147,6 +148,38 @@ export class ApprovalsService {
     approval: Prisma.ApprovalGetPayload<{ include: typeof APPROVAL_INCLUDE }>,
     action: ApprovalActionType,
   ) {
+    if (approval.businessType === ApprovalBusinessType.ASSET_TRANSFER && approval.transfer) {
+      const transfer = approval.transfer;
+      if (transfer.status !== AssetTransferStatus.PENDING) {
+        throw new ConflictException("调拨申请状态已变化，请刷新后重试");
+      }
+      if (action === ApprovalActionType.REJECT) {
+        await tx.assetTransfer.update({
+          where: { id: transfer.id },
+          data: { status: AssetTransferStatus.REJECTED },
+        });
+        return { assetId: transfer.assetId, eventType: "transfer_rejected", summary: "资产调拨申请已驳回" };
+      }
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "assets" WHERE "id" = ${transfer.assetId} AND "organization_id" = ${approval.organizationId} FOR UPDATE`);
+      const asset = await tx.asset.findFirst({
+        where: { id: transfer.assetId, organizationId: approval.organizationId, archivedAt: null },
+      });
+      if (!asset) throw new NotFoundException("调拨关联的资产不存在");
+      if (asset.assetStatus !== "active" || !["available", "reserved"].includes(asset.resourceStatus)) {
+        throw new ConflictException("资产当前不可调拨");
+      }
+      const assetUpdated = await tx.asset.updateMany({
+        where: { id: asset.id, organizationId: approval.organizationId, version: asset.version, resourceStatus: { in: ["available", "reserved"] } },
+        data: { resourceStatus: "transferring", version: { increment: 1 } },
+      });
+      if (!assetUpdated.count) throw new ConflictException("资产状态已变化，请刷新后重试");
+      await tx.assetTransfer.update({
+        where: { id: transfer.id },
+        data: { status: AssetTransferStatus.APPROVED },
+      });
+      return { assetId: transfer.assetId, eventType: "transfer_approved", summary: "资产调拨申请已通过" };
+    }
+
     if (approval.businessType === ApprovalBusinessType.ASSET_BORROW && approval.borrow) {
       const borrow = approval.borrow;
       if (borrow.status !== AssetBorrowStatus.REQUESTED) {

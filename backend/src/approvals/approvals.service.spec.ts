@@ -4,6 +4,7 @@ import {
   ApprovalStatus,
   AssetBorrowStatus,
   AssetReservationStatus,
+  AssetTransferStatus,
   UserRole,
   UserStatus,
 } from "@prisma/client";
@@ -50,6 +51,7 @@ describe("ApprovalsService", () => {
     approvalAction: { create: vi.fn() },
     assetReservation: { findFirst: vi.fn(), update: vi.fn() },
     assetBorrowRecord: { findFirst: vi.fn(), update: vi.fn() },
+    assetTransfer: { update: vi.fn() },
     asset: { findFirst: vi.fn(), updateMany: vi.fn() },
     assetEvent: { create: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -148,6 +150,33 @@ describe("ApprovalsService", () => {
     }));
     expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { resourceStatus: "reserved", version: { increment: 1 } },
+    }));
+  });
+
+  it("approves a pending transfer and locks the asset for handover", async () => {
+    const transferApproval = {
+      ...pendingApproval,
+      businessType: ApprovalBusinessType.ASSET_TRANSFER,
+      businessId: "transfer-1",
+      reservation: null,
+      transfer: {
+        id: "transfer-1",
+        assetId: "asset-1",
+        status: AssetTransferStatus.PENDING,
+        asset: pendingApproval.reservation.asset,
+      },
+    };
+    prisma.approval.findFirst.mockResolvedValue(transferApproval);
+    prisma.assetTransfer.update.mockResolvedValue({ ...transferApproval.transfer, status: AssetTransferStatus.APPROVED });
+    const service = new ApprovalsService(prisma as never, authorization as never);
+
+    await service.approve(admin, "approval-1", { comment: "同意调拨" });
+
+    expect(prisma.assetTransfer.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: AssetTransferStatus.APPROVED },
+    }));
+    expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resourceStatus: "transferring", version: { increment: 1 } },
     }));
   });
 

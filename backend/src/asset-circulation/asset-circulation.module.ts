@@ -8,11 +8,13 @@ import { AssetCirculationController } from "./asset-circulation.controller";
 import { AssetBorrowsController } from "./asset-borrows.controller";
 import { AssetBorrowsService } from "./asset-borrows.service";
 import { AssetReservationsService } from "./asset-reservations.service";
+import { AssetTransfersController } from "./asset-transfers.controller";
+import { AssetTransfersService } from "./asset-transfers.service";
 
 @Module({
   imports: [AuthModule, AuthorizationModule],
-  controllers: [AssetCirculationController, AssetBorrowsController],
-  providers: [AssetReservationsService, AssetBorrowsService, IdempotencyService, JwtAuthGuard],
-  exports: [AssetReservationsService, AssetBorrowsService],
+  controllers: [AssetCirculationController, AssetBorrowsController, AssetTransfersController],
+  providers: [AssetReservationsService, AssetBorrowsService, AssetTransfersService, IdempotencyService, JwtAuthGuard],
+  exports: [AssetReservationsService, AssetBorrowsService, AssetTransfersService],
 })
 export class AssetCirculationModule {}
