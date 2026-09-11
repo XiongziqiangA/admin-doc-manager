@@ -16,6 +16,11 @@ describe("DocumentContentIndexService", () => {
       documentContentIndex: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      documentContentChunk: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn().mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const storage = { getStoredFilePath: vi.fn().mockResolvedValue("C:/storage/test.txt") };
     const parser = {
@@ -39,6 +44,16 @@ describe("DocumentContentIndexService", () => {
         status: CONTENT_INDEX_STATUS.READY,
       }),
     );
+    expect(prisma.documentContentChunk.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        documentId: "document-1",
+        versionId: "version-1",
+        chunkIndex: 0,
+        sourceRef: "chars:0-13",
+        content: "contract text",
+        contentDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })],
+    });
   });
 
   it("records parser failures without throwing to the upload caller", async () => {
@@ -54,6 +69,11 @@ describe("DocumentContentIndexService", () => {
       documentContentIndex: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      documentContentChunk: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        createMany: vi.fn(),
+      },
+      $transaction: vi.fn().mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const storage = { getStoredFilePath: vi.fn().mockRejectedValue(new Error("file missing")) };
     const parser = { extract: vi.fn() };
@@ -67,6 +87,7 @@ describe("DocumentContentIndexService", () => {
     }));
     expect(parser.extract).not.toHaveBeenCalled();
     expect(prisma.documentContentIndex.upsert.mock.calls[1][0].update.status).toBe(CONTENT_INDEX_STATUS.FAILED);
+    expect(prisma.documentContentChunk.deleteMany).toHaveBeenCalledWith({ where: { versionId: "version-1" } });
   });
 
   it("clears stale embeddings when a ready index has no current vector", async () => {
@@ -82,6 +103,11 @@ describe("DocumentContentIndexService", () => {
       documentContentIndex: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      documentContentChunk: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn().mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const storage = { getStoredFilePath: vi.fn().mockResolvedValue("C:/storage/test.txt") };
     const parser = {
@@ -123,6 +149,11 @@ describe("DocumentContentIndexService", () => {
       documentContentIndex: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      documentContentChunk: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn().mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const parser = {
       extract: vi.fn().mockResolvedValue({
@@ -162,6 +193,11 @@ describe("DocumentContentIndexService", () => {
       documentContentIndex: {
         upsert: vi.fn().mockResolvedValue({}),
       },
+      documentContentChunk: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: vi.fn().mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const parser = {
       extract: vi.fn().mockResolvedValue({

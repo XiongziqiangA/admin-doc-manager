@@ -4,6 +4,7 @@ import { DocumentStatus, Prisma } from "@prisma/client";
 import { StorageService } from "../documents/storage.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { DocumentContentParserService } from "./document-content.parser";
+import { splitDocumentContent } from "./document-content-chunker";
 import { CONTENT_INDEX_STATUS, ExtractedDocumentContent } from "./document-content.types";
 import { EmbeddingService } from "./embedding.service";
 
@@ -46,6 +47,7 @@ export class DocumentContentIndexService {
       }
       const indexedResult = embeddingError ? { ...result, errorMessage: embeddingError } : result;
       await this.saveIndex(version.documentId, version.id, indexedResult, embedding);
+      await this.replaceChunks(version.documentId, version.id, indexedResult);
       return indexedResult;
     } catch (error) {
       const result: ExtractedDocumentContent = {
@@ -56,6 +58,7 @@ export class DocumentContentIndexService {
         errorMessage: this.errorMessage(error),
       };
       await this.saveIndex(version.documentId, version.id, result).catch(() => undefined);
+      await this.replaceChunks(version.documentId, version.id, result).catch(() => undefined);
       return result;
     }
   }
@@ -127,6 +130,27 @@ export class DocumentContentIndexService {
         indexedAt: new Date(),
       },
     });
+  }
+
+  private replaceChunks(
+    documentId: string,
+    versionId: string,
+    result: ExtractedDocumentContent,
+  ) {
+    const chunks = result.status === CONTENT_INDEX_STATUS.READY
+      ? splitDocumentContent(result.extractedText)
+      : [];
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.documentContentChunk.deleteMany({ where: { versionId } }),
+    ];
+    if (chunks.length) {
+      operations.push(
+        this.prisma.documentContentChunk.createMany({
+          data: chunks.map((chunk) => ({ documentId, versionId, ...chunk })),
+        }),
+      );
+    }
+    return this.prisma.$transaction(operations);
   }
 
   private errorMessage(error: unknown) {

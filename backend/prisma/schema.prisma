@@ -1027,6 +1027,7 @@ model Document {
   businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
   businessIssueDocumentLinks BusinessMatterIssueDocument[]
   assetLinks           AssetDocument[]
+  contentChunks        DocumentContentChunk[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -1054,6 +1055,7 @@ model DocumentVersion {
   currentFor          Document?             @relation("CurrentDocumentVersion")
   uploadUser          User                  @relation("VersionUploadedBy", fields: [uploadUserId], references: [id])
   contentIndex        DocumentContentIndex?
+  contentChunks       DocumentContentChunk[]
   analysis            DocumentAnalysis?
   logs                DocumentLog[]
   financePackageItems FinancePackageItem[]
@@ -1091,6 +1093,25 @@ model DocumentContentIndex {
   @@index([documentId])
   @@index([status])
   @@map("document_content_indexes")
+}
+
+model DocumentContentChunk {
+  id            String   @id @default(uuid())
+  documentId    String   @map("document_id")
+  versionId     String   @map("version_id")
+  chunkIndex    Int      @map("chunk_index")
+  sourceRef     String   @map("source_ref")
+  content       String   @db.Text
+  contentDigest String   @map("content_digest")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  document Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version  DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, chunkIndex])
+  @@index([documentId, versionId])
+  @@index([contentDigest])
+  @@map("document_content_chunks")
 }
 
 model DocumentTag {

@@ -15,6 +15,7 @@ interface SearchCandidate {
   category: { id: string; name: string; parentId: string | null };
   subcategory: { id: string; name: string; parentId: string | null } | null;
   currentVersion: {
+    id: string;
     originalFileName: string;
     fileExt: string;
     contentIndex: { status: string; embedding: Prisma.JsonValue | null } | null;
@@ -60,6 +61,7 @@ export class SearchAssistantService {
           select: {
             originalFileName: true,
             fileExt: true,
+            id: true,
             contentIndex: {
               select: { status: true, embedding: true },
             },
@@ -77,7 +79,12 @@ export class SearchAssistantService {
       .filter((item) => item.score > 0)
       .sort((left, right) => right.score - left.score || right.updatedAt.getTime() - left.updatedAt.getTime())
       .slice(0, limit);
-    const snippets = await this.loadSnippets(scored.map((item) => item.candidate.id));
+    const snippets = await this.loadSnippets(
+      scored.flatMap((item) => item.candidate.currentVersion
+        ? [{ documentId: item.candidate.id, versionId: item.candidate.currentVersion.id }]
+        : []),
+      terms,
+    );
     const results = scored.map((item) => ({
         documentId: item.candidate.id,
         title: item.candidate.title,
@@ -148,51 +155,53 @@ export class SearchAssistantService {
       return new Set<string>();
     }
 
-    const matches = await this.prisma.document.findMany({
+    const matches = await this.prisma.documentContentChunk.findMany({
       where: {
-        deletedAt: null,
-        status: { not: DocumentStatus.DELETED },
-        OR: terms.map((term) => ({
-          currentVersion: {
+        version: {
+          currentFor: {
             is: {
-              contentIndex: {
-                is: {
-                  status: CONTENT_INDEX_STATUS.READY,
-                  extractedText: { contains: term, mode: "insensitive" },
-                },
-              },
+              deletedAt: null,
+              status: { not: DocumentStatus.DELETED },
             },
           },
+        },
+        OR: terms.map((term) => ({
+          content: { contains: term, mode: "insensitive" },
         })),
       },
-      select: { id: true },
+      select: { documentId: true },
+      distinct: ["documentId"],
     });
-    return new Set(matches.map((match) => match.id));
+    return new Set(matches.map((match) => match.documentId));
   }
 
-  private async loadSnippets(documentIds: string[]) {
-    if (!documentIds.length) {
+  private async loadSnippets(
+    versions: Array<{ documentId: string; versionId: string }>,
+    terms: string[],
+  ) {
+    if (!versions.length) {
       return new Map<string, string>();
     }
 
-    const documents = await this.prisma.document.findMany({
+    const chunks = await this.prisma.documentContentChunk.findMany({
       where: {
-        id: { in: documentIds },
-        deletedAt: null,
-        status: { not: DocumentStatus.DELETED },
+        documentId: { in: versions.map((item) => item.documentId) },
+        OR: versions.map((item) => ({ documentId: item.documentId, versionId: item.versionId })),
+        ...(terms.length
+          ? { AND: [{ OR: terms.map((term) => ({ content: { contains: term, mode: "insensitive" as const } })) }] }
+          : {}),
       },
       select: {
-        id: true,
-        currentVersion: {
-          select: {
-            contentIndex: { select: { extractedText: true } },
-          },
-        },
+        documentId: true,
+        content: true,
       },
+      orderBy: [{ documentId: "asc" }, { chunkIndex: "asc" }],
     });
-    return new Map(
-      documents.map((document) => [document.id, document.currentVersion?.contentIndex?.extractedText ?? ""]),
-    );
+    const snippets = new Map<string, string>();
+    for (const chunk of chunks) {
+      if (!snippets.has(chunk.documentId)) snippets.set(chunk.documentId, chunk.content);
+    }
+    return snippets;
   }
 
   private categoryPath(categories: Array<{ id: string; name: string; parentId: string | null }>, categoryId: string, subcategoryId: string | null) {

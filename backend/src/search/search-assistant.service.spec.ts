@@ -14,6 +14,7 @@ describe("SearchAssistantService", () => {
     category: { id: "root", name: "合同文件", parentId: null },
     subcategory: { id: "child", name: "我界智能", parentId: "root" },
     currentVersion: {
+      id: "version-1",
       originalFileName: "我界智能服务合同.pdf",
       fileExt: ".pdf",
       contentIndex: {
@@ -30,6 +31,11 @@ describe("SearchAssistantService", () => {
     const prisma = {
       category: { findMany: vi.fn().mockResolvedValue([candidate.category, candidate.subcategory]) },
       document: { findMany: vi.fn().mockResolvedValue([candidate]) },
+      documentContentChunk: {
+        findMany: vi.fn()
+          .mockResolvedValueOnce([{ documentId: candidate.id }])
+          .mockResolvedValueOnce([{ documentId: candidate.id, content: "甲方：我界智能，合同期限为一年。" }]),
+      },
     };
     const embeddings = { embed: vi.fn().mockResolvedValue(null) };
     const service = new SearchAssistantService(prisma as never, embeddings as never);
@@ -59,6 +65,11 @@ describe("SearchAssistantService", () => {
     const prisma = {
       category: { findMany: vi.fn().mockResolvedValue([candidate.category, candidate.subcategory]) },
       document: { findMany: vi.fn().mockResolvedValue([semanticCandidate]) },
+      documentContentChunk: {
+        findMany: vi.fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([{ documentId: candidate.id, content: "甲方：我界智能，合同期限为一年。" }]),
+      },
     };
     const embeddings = { embed: vi.fn().mockResolvedValue({ embedding: [1, 0], model: "test" }) };
     const service = new SearchAssistantService(prisma as never, embeddings as never);
@@ -69,20 +80,27 @@ describe("SearchAssistantService", () => {
     expect(result.results[0].matchedBy).toContain("文件内容语义");
   });
 
-  it("loads full text only for the ranked result set", async () => {
+  it("loads content chunks only for the ranked result set", async () => {
     const prisma = {
       category: { findMany: vi.fn().mockResolvedValue([candidate.category, candidate.subcategory]) },
       document: {
+        findMany: vi.fn().mockResolvedValue([{
+          ...candidate,
+          currentVersion: {
+            ...candidate.currentVersion,
+            contentIndex: { status: "READY", embedding: null },
+          },
+        }]),
+      },
+      documentContentChunk: {
         findMany: vi.fn()
-          .mockResolvedValueOnce([{ id: candidate.id }])
+          .mockResolvedValueOnce([{ documentId: candidate.id }])
           .mockResolvedValueOnce([{
-            ...candidate,
-            currentVersion: {
-              ...candidate.currentVersion,
-              contentIndex: { status: "READY", embedding: null },
-            },
-          }])
-          .mockResolvedValueOnce([candidate]),
+            documentId: candidate.id,
+            content: "甲方：我界智能，合同期限为一年。",
+            sourceRef: "chars:0-18",
+            chunkIndex: 0,
+          }]),
       },
     };
     const embeddings = { embed: vi.fn().mockResolvedValue(null) };
@@ -91,14 +109,18 @@ describe("SearchAssistantService", () => {
     const result = await service.search("我界智能", 10);
 
     expect(result.results[0].snippet).toContain("我界智能");
-    const candidateQuery = prisma.document.findMany.mock.calls[1][0];
+    const candidateQuery = prisma.document.findMany.mock.calls[0][0];
     expect(candidateQuery.select.currentVersion.select.contentIndex.select).not.toHaveProperty("extractedText");
+    expect(prisma.documentContentChunk.findMany.mock.calls[1][0].where.documentId).toEqual({
+      in: [candidate.id],
+    });
   });
 
   it("rejects a blank natural-language query", async () => {
     const prisma = {
       category: { findMany: vi.fn() },
       document: { findMany: vi.fn() },
+      documentContentChunk: { findMany: vi.fn() },
     };
     const service = new SearchAssistantService(prisma as never, { embed: vi.fn() } as never);
 
