@@ -7,6 +7,7 @@ import { ApprovalsModule } from "./approvals/approvals.module";
 import { AuthModule } from "./auth/auth.module";
 import { AuthorizationModule } from "./authorization/authorization.module";
 import { AssetCirculationModule } from "./asset-circulation/asset-circulation.module";
+import { AssetLifecycleModule } from "./asset-lifecycle/asset-lifecycle.module";
 import { AssetsModule } from "./assets/assets.module";
 import { BusinessMattersModule } from "./business-matters/business-matters.module";
 import { BusinessWorkflowModule } from "./business-workflow/business-workflow.module";
@@ -30,6 +31,7 @@ import { UsersModule } from "./users/users.module";
     ApprovalsModule,
     AuthorizationModule,
     AssetCirculationModule,
+    AssetLifecycleModule,
     AssetsModule,
     BusinessMattersModule,
     BusinessWorkflowModule,
