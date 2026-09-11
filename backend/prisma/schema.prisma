@@ -284,6 +284,7 @@ model Organization {
   locations   Location[]
   assets      Asset[]
   pendingAssets PendingAsset[]
+  assetDocumentLinks AssetDocument[]
 
   @@index([enabled])
   @@map("organizations")
@@ -588,6 +589,7 @@ model Asset {
   usingUser       User?        @relation("AssetUser", fields: [usingUserId], references: [id], onDelete: SetNull)
   createdBy       User         @relation("AssetCreatedBy", fields: [createdById], references: [id])
   identifiers     AssetIdentifier[]
+  documents       AssetDocument[]
 
   @@unique([organizationId, assetCode])
   @@unique([organizationId, serialNumber])
@@ -611,6 +613,21 @@ model AssetIdentifier {
   @@unique([identifierType, value])
   @@index([assetId])
   @@map("asset_identifiers")
+}
+
+model AssetDocument {
+  organizationId String       @map("organization_id")
+  assetId        String       @map("asset_id")
+  documentId     String       @map("document_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          Asset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  document       Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, documentId])
+  @@index([organizationId, documentId])
+  @@index([documentId])
+  @@map("asset_documents")
 }
 
 model PendingAsset {
@@ -1009,6 +1026,7 @@ model Document {
   businessTaskDocumentLinks BusinessMatterTaskDocument[]
   businessFollowUpDocumentLinks BusinessMatterFollowUpDocument[]
   businessIssueDocumentLinks BusinessMatterIssueDocument[]
+  assetLinks           AssetDocument[]
 
   @@index([categoryId])
   @@index([subcategoryId])

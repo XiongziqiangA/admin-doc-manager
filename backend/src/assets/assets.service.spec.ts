@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from "@nestjs/common";
 import { Prisma, UserRole, UserStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +40,16 @@ describe("AssetsService", () => {
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    assetDocument: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      createMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    document: {
+      findMany: vi.fn(),
       delete: vi.fn(),
     },
     pendingAsset: {
@@ -291,6 +302,86 @@ describe("AssetsService", () => {
     await expect(service.assertNotDeletable(admin, "asset-1")).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  it("links active documents from the current organization to an asset", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
+    prisma.document.findMany.mockResolvedValue([{ id: "document-1" }, { id: "document-2" }]);
+    prisma.assetDocument.findMany.mockResolvedValue([]);
+    prisma.assetDocument.createMany.mockResolvedValue({ count: 2 });
+
+    const result = await service.attachDocuments(
+      admin,
+      "asset-1",
+      { documentIds: ["document-1", "document-2", "document-1"] },
+    );
+
+    expect(prisma.document.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ["document-1", "document-2"] },
+        deletedAt: null,
+        status: { not: "DELETED" },
+        creator: { organizationId: "org-1" },
+      },
+      select: { id: true },
+    });
+    expect(prisma.assetDocument.createMany).toHaveBeenCalledWith({
+      data: [
+        { organizationId: "org-1", assetId: "asset-1", documentId: "document-1" },
+        { organizationId: "org-1", assetId: "asset-1", documentId: "document-2" },
+      ],
+    });
+    expect(result).toEqual({ assetId: "asset-1", addedCount: 2 });
+  });
+
+  it("rejects document links when a document is unavailable to the current organization", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
+    prisma.document.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.attachDocuments(admin, "asset-1", { documentIds: ["document-other-org"] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.assetDocument.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate document links", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
+    prisma.document.findMany.mockResolvedValue([{ id: "document-1" }]);
+    prisma.assetDocument.findMany.mockResolvedValue([{ documentId: "document-1" }]);
+
+    await expect(
+      service.attachDocuments(admin, "asset-1", { documentIds: ["document-1"] }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.assetDocument.createMany).not.toHaveBeenCalled();
+  });
+
+  it("removes only the asset-document link", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
+    prisma.assetDocument.findFirst.mockResolvedValue({
+      assetId: "asset-1",
+      documentId: "document-1",
+      organizationId: "org-1",
+    });
+    prisma.assetDocument.delete.mockResolvedValue({
+      assetId: "asset-1",
+      documentId: "document-1",
+    });
+
+    await service.detachDocument(admin, "asset-1", "document-1");
+
+    expect(prisma.assetDocument.delete).toHaveBeenCalledWith({
+      where: { assetId_documentId: { assetId: "asset-1", documentId: "document-1" } },
+    });
+    expect(prisma.document.delete).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing asset-document link", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
+    prisma.assetDocument.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.detachDocument(admin, "asset-1", "document-1"),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("confirms a pending asset and updates its status in one transaction", async () => {

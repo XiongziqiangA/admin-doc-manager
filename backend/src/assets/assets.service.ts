@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { DocumentStatus, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
 import { AuthorizationService } from "../authorization/authorization.service";
@@ -13,6 +13,7 @@ import { PERMISSIONS } from "../authorization/permissions";
 import { PrismaService } from "../prisma/prisma.service";
 import { PublicUser } from "../users/user.presenter";
 import { parseFieldSchema, validateCustomFields } from "./asset-field-schema";
+import { AttachAssetDocumentsDto } from "./dto/attach-asset-documents.dto";
 import { ConfirmPendingAssetDto } from "./dto/confirm-pending-asset.dto";
 import { CreateAssetIdentifierDto } from "./dto/create-asset-identifier.dto";
 import { CreateAssetDto } from "./dto/create-asset.dto";
@@ -32,6 +33,22 @@ const ASSET_INCLUDE = {
   owner: { select: { id: true, realName: true, username: true } },
   usingUser: { select: { id: true, realName: true, username: true } },
   identifiers: { orderBy: [{ isPrimary: "desc" as const }, { createdAt: "asc" as const }] },
+} satisfies Prisma.AssetInclude;
+
+const ASSET_DETAIL_INCLUDE = {
+  ...ASSET_INCLUDE,
+  documents: {
+    orderBy: { createdAt: "desc" as const },
+    include: {
+      document: {
+        include: {
+          currentVersion: true,
+          category: true,
+          subcategory: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.AssetInclude;
 
 type AssetWriteClient = Pick<
@@ -253,9 +270,64 @@ export class AssetsService {
   async findById(user: PublicUser, id: string) {
     await this.assertPermission(user, PERMISSIONS.ASSET_READ);
     const organizationId = this.organizationId(user);
-    const asset = await this.prisma.asset.findFirst({ where: { id, organizationId }, include: ASSET_INCLUDE });
+    const asset = await this.prisma.asset.findFirst({ where: { id, organizationId }, include: ASSET_DETAIL_INCLUDE });
     if (!asset) throw new NotFoundException("资产不存在");
     return asset;
+  }
+
+  async attachDocuments(user: PublicUser, assetId: string, dto: AttachAssetDocumentsDto) {
+    await this.assertPermission(user, PERMISSIONS.ASSET_UPDATE);
+    const organizationId = this.organizationId(user);
+    await this.assertAssetInOrganization(user, assetId);
+    const uniqueDocumentIds = [...new Set(dto.documentIds)];
+    const documents = await this.prisma.document.findMany({
+      where: {
+        id: { in: uniqueDocumentIds },
+        deletedAt: null,
+        status: { not: DocumentStatus.DELETED },
+        creator: { organizationId },
+      },
+      select: { id: true },
+    });
+    if (documents.length !== uniqueDocumentIds.length) {
+      throw new BadRequestException("存在不存在、已删除或不属于当前企业的文件");
+    }
+
+    const existing = await this.prisma.assetDocument.findMany({
+      where: { organizationId, assetId, documentId: { in: uniqueDocumentIds } },
+      select: { documentId: true },
+    });
+    if (existing.length) {
+      throw new ConflictException("所选文件中包含已关联文件");
+    }
+
+    try {
+      const result = await this.prisma.assetDocument.createMany({
+        data: uniqueDocumentIds.map((documentId) => ({ organizationId, assetId, documentId })),
+      });
+      return { assetId, addedCount: result.count };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("所选文件中包含已关联文件，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  async detachDocument(user: PublicUser, assetId: string, documentId: string) {
+    await this.assertPermission(user, PERMISSIONS.ASSET_UPDATE);
+    const organizationId = this.organizationId(user);
+    await this.assertAssetInOrganization(user, assetId);
+    const link = await this.prisma.assetDocument.findFirst({
+      where: { organizationId, assetId, documentId },
+      select: { assetId: true, documentId: true },
+    });
+    if (!link) {
+      throw new NotFoundException("文件关联不存在");
+    }
+    return this.prisma.assetDocument.delete({
+      where: { assetId_documentId: { assetId, documentId } },
+    });
   }
 
   async createIdentifier(user: PublicUser, assetId: string, dto: CreateAssetIdentifierDto) {

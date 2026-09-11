@@ -5,6 +5,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { PublicUser } from "../users/user.presenter";
 import { AssetsService } from "./assets.service";
+import { AttachAssetDocumentsDto } from "./dto/attach-asset-documents.dto";
 import { ConfirmPendingAssetDto } from "./dto/confirm-pending-asset.dto";
 import { CreateAssetIdentifierDto } from "./dto/create-asset-identifier.dto";
 import { CreateAssetDto } from "./dto/create-asset.dto";
@@ -96,6 +97,24 @@ export class AssetsController {
     @CurrentUser() user: PublicUser,
   ) {
     return this.assetsService.createIdentifier(user, id, dto);
+  }
+
+  @Post(":id/documents")
+  attachDocuments(
+    @Param("id") id: string,
+    @Body() dto: AttachAssetDocumentsDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.assetsService.attachDocuments(user, id, dto);
+  }
+
+  @Delete(":id/documents/:documentId")
+  detachDocument(
+    @Param("id") id: string,
+    @Param("documentId") documentId: string,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.assetsService.detachDocument(user, id, documentId);
   }
 
   @Patch(":id/identifiers/:identifierId")
