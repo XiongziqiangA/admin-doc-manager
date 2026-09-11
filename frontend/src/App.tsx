@@ -105,6 +105,7 @@ import { AiSettingsPage } from "./ai-settings-page";
 import { BusinessMattersPage } from "./business-matters-page";
 import { AssetsPage } from "./assets-page";
 import { AssetCirculationPage } from "./asset-circulation-page";
+import { AssetLifecyclePage } from "./asset-lifecycle-page";
 import { ApprovalsPage } from "./approvals-page";
 
 declare global {
@@ -570,6 +571,7 @@ type PageKey =
   | "business-matters"
   | "assets"
   | "asset-circulation"
+  | "asset-lifecycle"
   | "approvals";
 const WEB_REMEMBERED_USERNAME_KEY = "enterprise-admin-docs.remembered-username";
 
@@ -1992,6 +1994,7 @@ export default function App() {
                   children: [
                     { key: "assets", label: text.assetRegister },
                     { key: "asset-circulation", label: text.assetCirculation },
+                    { key: "asset-lifecycle", label: "资产生命周期" },
                   ],
                 },
                 { key: "finance", icon: <AccountBookOutlined />, label: text.financePackages },
@@ -2120,6 +2123,8 @@ export default function App() {
             />
           ) : page === "asset-circulation" ? (
             <AssetCirculationPage currentUser={user} departments={departments} />
+          ) : page === "asset-lifecycle" ? (
+            <AssetLifecyclePage currentUser={user} departments={departments} />
           ) : page === "approvals" ? (
             <ApprovalsPage currentUser={user} />
           ) : page === "finance" ? (

@@ -36,6 +36,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Timeline,
   Typography,
   message,
 } from "antd";
@@ -55,6 +56,7 @@ import {
   deleteAssetIdentifier,
   getAsset,
   getAssetOverview,
+  listAssetEvents,
   detachAssetDocument,
   listDocuments,
   listBusinessMatters,
@@ -70,6 +72,7 @@ import {
 } from "./api";
 import type {
   AssetFieldDefinition,
+  AssetEventRecord,
   AssetIdentifierRecord,
   AssetDocumentLink,
   AssetListQuery,
@@ -100,6 +103,11 @@ const assetStatusMeta: Record<AssetStatus, { label: string; color: string }> = {
   pending: { label: "待确认", color: "gold" },
   unavailable: { label: "不可用", color: "red" },
   archived: { label: "已归档", color: "default" },
+  scrapped: { label: "已报废", color: "default" },
+  lost: { label: "已遗失", color: "red" },
+  sold: { label: "已出售", color: "default" },
+  transferred: { label: "已转出", color: "default" },
+  donated: { label: "已捐赠", color: "default" },
 };
 
 const resourceStatusMeta: Record<AssetResourceStatus, { label: string; color: string }> = {
@@ -109,7 +117,13 @@ const resourceStatusMeta: Record<AssetResourceStatus, { label: string; color: st
   transferring: { label: "调拨中", color: "cyan" },
   unavailable: { label: "不可用", color: "red" },
   return_pending: { label: "待确认归还", color: "orange" },
+  maintenance: { label: "维修中", color: "volcano" },
+  exit_pending: { label: "退出待审批", color: "magenta" },
+  retired: { label: "已退出", color: "default" },
 };
+
+const editableAssetStatuses: AssetStatus[] = ["active", "pending", "unavailable", "archived"];
+const editableResourceStatuses: AssetResourceStatus[] = ["available", "reserved", "unavailable"];
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -207,6 +221,7 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
   const [loadError, setLoadError] = useState("");
   const [detail, setDetail] = useState<AssetRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [assetEvents, setAssetEvents] = useState<AssetEventRecord[]>([]);
   const [assetFormOpen, setAssetFormOpen] = useState(false);
   const [assetFormMode, setAssetFormMode] = useState<"create" | "edit" | "pending">("create");
   const [editingAsset, setEditingAsset] = useState<AssetRecord | null>(null);
@@ -300,9 +315,15 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
 
   const openDetail = async (record: AssetRecord) => {
     setDetail(record);
+    setAssetEvents([]);
     setDetailLoading(true);
     try {
-      setDetail(await getAsset(record.id));
+      const [assetDetail, eventResult] = await Promise.all([
+        getAsset(record.id),
+        listAssetEvents(record.id, 1, 50),
+      ]);
+      setDetail(assetDetail);
+      setAssetEvents(eventResult.items);
     } catch (error) {
       message.error(`资产详情加载失败：${formatApiError(error)}`);
     } finally {
@@ -781,7 +802,7 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
                 {resourceStatusMeta[detail.resourceStatus]?.label || detail.resourceStatus}
               </Tag>
               <Typography.Text type="secondary">数据版本 {detail.version}</Typography.Text>
-              {isAdmin ? (
+              {isAdmin && !detail.archivedAt ? (
                 <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(detail)}>
                   编辑
                 </Button>
@@ -815,7 +836,7 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
             <div>
               <div className="asset-detail-section-heading">
                 <Typography.Title level={5}>资产识别码</Typography.Title>
-                {isAdmin ? (
+                {isAdmin && !detail.archivedAt ? (
                   <Button size="small" icon={<PlusOutlined />} onClick={() => openIdentifierModal()}>
                     新增识别码
                   </Button>
@@ -847,7 +868,7 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
                   <Typography.Title level={5}>关联文件</Typography.Title>
                   <Typography.Text type="secondary">关联行政文件中心中的资料，文件本身不会被复制。</Typography.Text>
                 </div>
-                {isAdmin ? (
+                {isAdmin && !detail.archivedAt ? (
                   <Button size="small" icon={<LinkOutlined />} onClick={openDocumentAttach}>
                     关联文件
                   </Button>
@@ -882,6 +903,27 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
               ) : (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未关联文件" />
               )}
+            </div>
+            <div>
+              <div className="asset-detail-section-heading">
+                <Typography.Title level={5}>生命周期记录</Typography.Title>
+                <Typography.Text type="secondary">最近 {assetEvents.length} 条</Typography.Text>
+              </div>
+              {assetEvents.length ? (
+                <Timeline
+                  items={assetEvents.map((event) => ({
+                    color: assetEventColor(event.eventType),
+                    children: (
+                      <div className="approval-history-item">
+                        <Typography.Text strong>{event.summary}</Typography.Text>
+                        <Typography.Text type="secondary">
+                          {event.actor?.realName || "系统"} · {formatDate(event.createdAt)}
+                        </Typography.Text>
+                      </div>
+                    ),
+                  }))}
+                />
+              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无生命周期记录" />}
             </div>
             <div>
               <Typography.Title level={5}>备注</Typography.Title>
@@ -1027,6 +1069,13 @@ export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsP
       </Modal>
     </div>
   );
+}
+
+function assetEventColor(eventType: string) {
+  if (eventType.includes("rejected") || eventType.includes("cancelled")) return "gray";
+  if (eventType.includes("anomaly") || eventType.includes("missing")) return "red";
+  if (eventType.includes("completed") || eventType.includes("returned")) return "green";
+  return "blue";
 }
 
 function AssetFormDrawer({
@@ -1260,12 +1309,12 @@ function AssetFormDrawer({
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item name="assetStatus" label="资产状态">
-                  <Select options={Object.entries(assetStatusMeta).map(([value, meta]) => ({ value, label: meta.label }))} />
+                  <Select options={editableAssetStatuses.map((value) => ({ value, label: assetStatusMeta[value].label }))} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item name="resourceStatus" label="使用状态">
-                  <Select options={Object.entries(resourceStatusMeta).map(([value, meta]) => ({ value, label: meta.label }))} />
+                  <Select options={editableResourceStatuses.map((value) => ({ value, label: resourceStatusMeta[value].label }))} />
                 </Form.Item>
               </Col>
             </Row>

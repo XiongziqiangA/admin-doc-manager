@@ -358,7 +358,8 @@ body {
 }
 
 .circulation-band,
-.approvals-band {
+.approvals-band,
+.lifecycle-band {
   min-width: 0;
   border-radius: 6px;
 }
@@ -372,6 +373,32 @@ body {
   white-space: normal;
   overflow-wrap: anywhere;
   vertical-align: middle;
+}
+
+.lifecycle-table .ant-table-cell {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.lifecycle-table .ant-btn-link {
+  height: auto;
+  padding: 3px 5px;
+}
+
+.inventory-progress {
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.inventory-progress > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 .circulation-table .ant-btn-link {

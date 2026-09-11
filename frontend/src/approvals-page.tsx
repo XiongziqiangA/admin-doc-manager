@@ -37,6 +37,7 @@ const businessTypeLabel = {
   ASSET_RESERVATION: "资产预约",
   ASSET_BORROW: "资产借用",
   ASSET_TRANSFER: "资产调拨",
+  ASSET_EXIT: "资产退出",
 } as const;
 
 const actionLabel = {
@@ -210,6 +211,8 @@ function ApprovalDetail({ record, onClose }: { record: ApprovalRecord | null; on
         <Descriptions.Item label="业务对象" span={2}>{businessSummary(record)}</Descriptions.Item>
         <Descriptions.Item label="申请人">{record.applicant.realName}</Descriptions.Item>
         <Descriptions.Item label="申请时间">{formatDateTime(record.createdAt)}</Descriptions.Item>
+        {record.exitRequest ? <Descriptions.Item label="退出方式">{exitTypeLabel[record.exitRequest.exitType]}</Descriptions.Item> : null}
+        {record.exitRequest ? <Descriptions.Item label="退出原因" span={2}>{record.exitRequest.reason}</Descriptions.Item> : null}
         <Descriptions.Item label="处理意见" span={2}>{record.comment || "无"}</Descriptions.Item>
       </Descriptions>
       <Typography.Title level={5} className="approval-history-title">处理记录</Typography.Title>
@@ -229,8 +232,17 @@ function ApprovalDetail({ record, onClose }: { record: ApprovalRecord | null; on
   );
 }
 
+const exitTypeLabel = {
+  SCRAPPED: "报废",
+  LOST: "遗失",
+  SOLD: "出售",
+  TRANSFERRED: "转出",
+  DONATED: "捐赠",
+  CROSS_COMPANY_TRANSFER: "跨公司调拨",
+} as const;
+
 function businessSummary(record: ApprovalRecord) {
-  const item = record.reservation ?? record.borrow ?? record.transfer;
+  const item = record.reservation ?? record.borrow ?? record.transfer ?? record.exitRequest;
   return item ? `${item.asset.name} · ${item.asset.assetCode}` : `业务编号 ${record.businessId}`;
 }
 

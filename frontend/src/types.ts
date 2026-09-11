@@ -30,19 +30,41 @@ export type BusinessFollowUpMethod = "CALL" | "WECHAT" | "EMAIL" | "MEETING" | "
 export type BusinessFinanceKind = "LOAN" | "REIMBURSEMENT";
 export type BusinessFinanceStatus = "DRAFT" | "PENDING" | "APPROVED" | "PAID" | "SETTLED" | "REJECTED" | "CANCELLED";
 export type BusinessContractStatus = "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED";
-export type AssetStatus = "active" | "pending" | "unavailable" | "archived";
+export type AssetStatus =
+  | "active"
+  | "pending"
+  | "unavailable"
+  | "archived"
+  | "scrapped"
+  | "lost"
+  | "sold"
+  | "transferred"
+  | "donated";
 export type AssetResourceStatus =
   | "available"
   | "reserved"
   | "borrowed"
   | "transferring"
   | "unavailable"
-  | "return_pending";
+  | "return_pending"
+  | "maintenance"
+  | "exit_pending"
+  | "retired";
 export type AssetReservationStatus = "PENDING" | "APPROVED" | "ACTIVE" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
 export type AssetBorrowStatus = "REQUESTED" | "APPROVED" | "ACTIVE" | "RETURN_PENDING" | "RETURNED" | "REJECTED" | "CANCELLED";
 export type AssetTransferStatus = "PENDING" | "APPROVED" | "IN_TRANSIT" | "COMPLETED" | "REJECTED" | "CANCELLED";
-export type ApprovalBusinessType = "ASSET_RESERVATION" | "ASSET_BORROW" | "ASSET_TRANSFER";
+export type ApprovalBusinessType = "ASSET_RESERVATION" | "ASSET_BORROW" | "ASSET_TRANSFER" | "ASSET_EXIT";
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+export type AssetInventoryScopeType = "ORGANIZATION" | "DEPARTMENT" | "LOCATION" | "PROJECT" | "ASSET_TYPE" | "ASSET_LIST";
+export type AssetInventoryStatus = "OPEN" | "COMPLETED" | "CANCELLED";
+export type AssetInventoryResult = "NORMAL" | "SURPLUS" | "MISSING" | "LOCATION_MISMATCH" | "STATUS_MISMATCH" | "OWNER_MISMATCH";
+export type AssetMaintenanceType = "REPAIR" | "MAINTENANCE" | "INSPECTION";
+export type AssetMaintenanceStatus = "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+export type AssetAnomalyType = "SURPLUS" | "MISSING" | "LOCATION_MISMATCH" | "STATUS_MISMATCH" | "OWNER_MISMATCH" | "DAMAGE" | "OTHER";
+export type AssetAnomalySeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type AssetAnomalyStatus = "OPEN" | "RESOLVED";
+export type AssetExitType = "SCRAPPED" | "LOST" | "SOLD" | "TRANSFERRED" | "DONATED" | "CROSS_COMPANY_TRANSFER";
+export type AssetExitStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 export interface FinanceAiConfig {
   enabled: boolean;
@@ -188,6 +210,115 @@ export interface AssetOverview {
   pending: number;
 }
 
+export interface AssetEventRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  actorId: string | null;
+  eventType: string;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  actor?: CirculationApplicant | null;
+}
+
+export interface AssetInventoryRecord {
+  id: string;
+  taskId: string;
+  assetId: string;
+  checkerId: string;
+  checkedAt: string;
+  checkedLocationId: string | null;
+  checkedAssetStatus: string | null;
+  checkedOwnerId: string | null;
+  result: AssetInventoryResult;
+  exceptionTypes: AssetInventoryResult[];
+  note: string | null;
+  asset: AssetSummary & {
+    location?: { id: string; name: string } | null;
+    owner?: CirculationApplicant | null;
+  };
+  checker: CirculationApplicant;
+  checkedLocation?: { id: string; name: string } | null;
+}
+
+export interface AssetInventoryTaskRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  scopeType: AssetInventoryScopeType;
+  scopeValue: { id?: string; assetIds?: string[] } | null;
+  plannedStart: string;
+  plannedEnd: string;
+  ownerId: string;
+  status: AssetInventoryStatus;
+  createdById: string;
+  createdAt: string;
+  completedAt: string | null;
+  owner: CirculationApplicant;
+  createdBy: CirculationApplicant;
+  _count: { records: number };
+  expectedCount?: number;
+  records?: AssetInventoryRecord[];
+  anomalies?: AssetAnomalyRecord[];
+}
+
+export interface AssetMaintenanceRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  maintenanceType: AssetMaintenanceType;
+  title: string;
+  description: string | null;
+  vendor: string | null;
+  plannedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  cost: string | null;
+  status: AssetMaintenanceStatus;
+  resourceStatusBefore: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  asset: AssetSummary;
+  createdBy: CirculationApplicant;
+}
+
+export interface AssetAnomalyRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  type: AssetAnomalyType;
+  severity: AssetAnomalySeverity;
+  status: AssetAnomalyStatus;
+  sourceType: string | null;
+  sourceId: string | null;
+  description: string;
+  assignedToId: string | null;
+  resolution: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  asset: AssetSummary;
+  assignedTo?: CirculationApplicant | null;
+}
+
+export interface AssetExitRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  applicantId: string;
+  approvalId: string | null;
+  exitType: AssetExitType;
+  reason: string;
+  status: AssetExitStatus;
+  resourceStatusBefore: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  asset: AssetSummary & { archivedAt?: string | null };
+  applicant: CirculationApplicant;
+  approval?: { id: string; status: ApprovalStatus; comment: string | null; completedAt: string | null } | null;
+}
+
 export interface AssetPendingRecord {
   id: string;
   source: string;
@@ -325,6 +456,7 @@ export interface ApprovalRecord {
   reservation?: AssetReservationRecord | null;
   borrow?: AssetBorrowRecord | null;
   transfer?: AssetTransferRecord | null;
+  exitRequest?: AssetExitRecord | null;
 }
 
 export interface AssetListQuery {

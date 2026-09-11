@@ -5,6 +5,12 @@ import type {
   ApiList,
   AssetListQuery,
   AssetIdentifierRecord,
+  AssetEventRecord,
+  AssetInventoryTaskRecord,
+  AssetInventoryRecord,
+  AssetMaintenanceRecord,
+  AssetAnomalyRecord,
+  AssetExitRecord,
   AssetBorrowRecord,
   AssetReservationRecord,
   AssetTransferRecord,
@@ -149,6 +155,10 @@ export async function getAsset(id: string) {
 
 export async function getAssetOverview() {
   return request<AssetOverview>({ method: "GET", url: "/assets/overview" });
+}
+
+export async function listAssetEvents(assetId: string, page = 1, pageSize = 20) {
+  return request<ApiList<AssetEventRecord>>({ method: "GET", url: `/assets/${assetId}/events`, params: { page, pageSize } });
 }
 
 export async function attachAssetDocuments(assetId: string, documentIds: string[]) {
@@ -315,6 +325,78 @@ export async function completeAssetTransfer(id: string, payload: { items?: strin
 
 export async function cancelAssetTransfer(id: string) {
   return request<AssetTransferRecord>({ method: "PATCH", url: `/asset-transfers/${id}/cancel` });
+}
+
+export async function listAssetInventoryTasks(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetInventoryTaskRecord>>({ method: "GET", url: "/asset-inventory-tasks", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function getAssetInventoryTask(id: string) {
+  return request<AssetInventoryTaskRecord>({ method: "GET", url: `/asset-inventory-tasks/${id}` });
+}
+
+export async function createAssetInventoryTask(payload: Record<string, unknown>) {
+  return request<AssetInventoryTaskRecord>({ method: "POST", url: "/asset-inventory-tasks", data: payload });
+}
+
+export async function recordAssetInventory(taskId: string, payload: Record<string, unknown>) {
+  return request<AssetInventoryRecord>({ method: "POST", url: `/asset-inventory-tasks/${taskId}/records`, data: payload });
+}
+
+export async function completeAssetInventoryTask(id: string) {
+  return request<AssetInventoryTaskRecord>({ method: "POST", url: `/asset-inventory-tasks/${id}/complete` });
+}
+
+export async function cancelAssetInventoryTask(id: string, reason?: string) {
+  return request<AssetInventoryTaskRecord>({ method: "PATCH", url: `/asset-inventory-tasks/${id}/cancel`, data: { reason } });
+}
+
+export async function listAssetMaintenance(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetMaintenanceRecord>>({ method: "GET", url: "/asset-maintenance", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetMaintenance(payload: Record<string, unknown>) {
+  return request<AssetMaintenanceRecord>({ method: "POST", url: "/asset-maintenance", data: payload });
+}
+
+export async function startAssetMaintenance(id: string) {
+  return request<AssetMaintenanceRecord>({ method: "POST", url: `/asset-maintenance/${id}/start` });
+}
+
+export async function completeAssetMaintenance(id: string, payload: Record<string, unknown>) {
+  return request<AssetMaintenanceRecord>({ method: "POST", url: `/asset-maintenance/${id}/complete`, data: payload });
+}
+
+export async function cancelAssetMaintenance(id: string, reason?: string) {
+  return request<AssetMaintenanceRecord>({ method: "PATCH", url: `/asset-maintenance/${id}/cancel`, data: { reason } });
+}
+
+export async function listAssetAnomalies(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetAnomalyRecord>>({ method: "GET", url: "/asset-anomalies", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetAnomaly(payload: Record<string, unknown>) {
+  return request<AssetAnomalyRecord>({ method: "POST", url: "/asset-anomalies", data: payload });
+}
+
+export async function assignAssetAnomaly(id: string, assignedToId: string | null) {
+  return request<AssetAnomalyRecord>({ method: "PATCH", url: `/asset-anomalies/${id}/assign`, data: { assignedToId } });
+}
+
+export async function resolveAssetAnomaly(id: string, resolution: string) {
+  return request<AssetAnomalyRecord>({ method: "POST", url: `/asset-anomalies/${id}/resolve`, data: { resolution } });
+}
+
+export async function listAssetExits(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetExitRecord>>({ method: "GET", url: "/asset-exits", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetExit(payload: Record<string, unknown>) {
+  return request<AssetExitRecord>({ method: "POST", url: "/asset-exits", data: payload });
+}
+
+export async function cancelAssetExit(id: string, reason?: string) {
+  return request<AssetExitRecord>({ method: "PATCH", url: `/asset-exits/${id}/cancel`, data: { reason } });
 }
 
 export async function listApprovals(params: Record<string, string | number | undefined> = {}) {
