@@ -98,6 +98,20 @@ describe("AssetReservationsService", () => {
     expect(prisma.assetReservation.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a reservation while the asset is under maintenance", async () => {
+    prisma.asset.findFirst.mockResolvedValue({
+      id: "asset-1",
+      organizationId: "org-1",
+      assetStatus: "active",
+      resourceStatus: "maintenance",
+      version: 1,
+    });
+    const service = new AssetReservationsService(prisma as never, authorization as never, idempotency as never);
+
+    await expect(service.create(employee, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.assetReservation.create).not.toHaveBeenCalled();
+  });
+
   it("scopes employee lists to their own applications while admins see the enterprise list", async () => {
     prisma.assetReservation.findMany.mockResolvedValue([]);
     prisma.assetReservation.count.mockResolvedValue(0);

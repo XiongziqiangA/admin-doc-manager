@@ -112,7 +112,7 @@ export class AssetBorrowsService {
       await this.lockAsset(tx, dto.assetId, organizationId);
       const asset = await tx.asset.findFirst({ where: { id: dto.assetId, organizationId, archivedAt: null } });
       if (!asset) throw new NotFoundException("资产不存在");
-      if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending"].includes(asset.resourceStatus)) {
+      if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending", "maintenance"].includes(asset.resourceStatus)) {
         throw new ConflictException("资产当前不可借用");
       }
       const reservation = dto.reservationId

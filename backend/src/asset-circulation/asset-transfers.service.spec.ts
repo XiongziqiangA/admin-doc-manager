@@ -124,6 +124,14 @@ describe("AssetTransfersService", () => {
     await expect(service.create(admin, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it("prevents an asset under maintenance from entering transfer", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ ...asset, resourceStatus: "maintenance" });
+    const service = new AssetTransfersService(prisma as never, authorization as never, idempotency as never);
+
+    await expect(service.create(admin, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.assetTransfer.create).not.toHaveBeenCalled();
+  });
+
   it("completes a transfer and records its handover atomically", async () => {
     prisma.assetTransfer.findFirst.mockResolvedValue(transfer);
     prisma.assetTransfer.update.mockResolvedValue({ ...transfer, status: AssetTransferStatus.COMPLETED });

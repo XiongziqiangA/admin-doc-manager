@@ -107,6 +107,14 @@ describe("AssetBorrowsService", () => {
     expect(prisma.assetBorrowRecord.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a borrow request while the asset is under maintenance", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ ...pendingBorrow.asset, organizationId: "org-1", resourceStatus: "maintenance" });
+    const service = new AssetBorrowsService(prisma as never, authorization as never, idempotency as never);
+
+    await expect(service.create(employee, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.assetBorrowRecord.create).not.toHaveBeenCalled();
+  });
+
   it("allows the applicant to convert their approved reservation into a borrow request", async () => {
     prisma.assetReservation.findFirst
       .mockResolvedValueOnce({
