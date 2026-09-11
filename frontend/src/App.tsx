@@ -2,6 +2,7 @@ import {
   AccountBookOutlined,
   ApiOutlined,
   AppstoreOutlined,
+  DatabaseOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -101,6 +102,7 @@ import type {
 import { FinancePackagesPage } from "./finance-packages-page";
 import { AiSettingsPage } from "./ai-settings-page";
 import { BusinessMattersPage } from "./business-matters-page";
+import { AssetsPage } from "./assets-page";
 
 declare global {
   interface Window {
@@ -297,7 +299,7 @@ const acceptedUploadFileTypes = acceptedUploadExtensions.join(",");
 const { Header, Sider, Content } = Layout;
 
 const text = {
-  brand: "\u4f01\u4e1a\u884c\u653f\u8d44\u6599\u7ba1\u7406\u7cfb\u7edf",
+  brand: "企业管理系统",
   loginTitle: "\u6b22\u8fce\u767b\u5f55",
   loginDesc: "\u96c6\u4e2d\u7ba1\u7406\u4f01\u4e1a\u884c\u653f\u6587\u4ef6\u3001\u5206\u7c7b\u548c\u5386\u53f2\u7248\u672c\u3002",
   username: "\u8d26\u53f7",
@@ -312,6 +314,7 @@ const text = {
   recycleBin: "\u56de\u6536\u7ad9",
   categories: "\u5206\u7c7b\u7ba1\u7406",
   financePackages: "财务归集",
+  assets: "资产设备",
   aiSettings: "AI 接口配置",
   admin: "\u7ba1\u7406\u5458",
   employee: "\u5458\u5de5",
@@ -551,7 +554,15 @@ const text = {
   items: "\u4e2a",
 };
 
-type PageKey = "dashboard" | "documents" | "recycle" | "categories" | "finance" | "ai-settings" | "business-matters";
+type PageKey =
+  | "dashboard"
+  | "documents"
+  | "recycle"
+  | "categories"
+  | "finance"
+  | "ai-settings"
+  | "business-matters"
+  | "assets";
 const WEB_REMEMBERED_USERNAME_KEY = "enterprise-admin-docs.remembered-username";
 
 interface LoginFormValues {
@@ -1945,24 +1956,43 @@ export default function App() {
       )}
       <Sider width={240} collapsible collapsed={collapsed} trigger={null} className="app-sider">
         <div className="brand">
-          <FolderOpenOutlined />
-          {!collapsed && <span>{text.brand}</span>}
+          <span className="brand-mark">企</span>
+          {!collapsed && (
+            <span className="brand-copy">
+              <strong>{text.brand}</strong>
+              <small>行政 · 资产 · 事项一体化</small>
+            </span>
+          )}
         </div>
         <Menu
+          theme="dark"
           mode="inline"
           selectedKeys={[page]}
           items={[
-            { key: "dashboard", icon: <AppstoreOutlined />, label: text.dashboard },
-            { key: "documents", icon: <FileTextOutlined />, label: text.documents },
-            { key: "business-matters", icon: <FolderOpenOutlined />, label: "项目与事项" },
-            ...(user.role === "ADMIN"
-              ? [{ key: "recycle", icon: <DeleteOutlined />, label: text.recycleBin }]
-              : []),
-            { key: "categories", icon: <SettingOutlined />, label: text.categories },
-            { key: "finance", icon: <AccountBookOutlined />, label: text.financePackages },
-            ...(user.role === "ADMIN"
-              ? [{ key: "ai-settings", icon: <ApiOutlined />, label: text.aiSettings }]
-              : []),
+            {
+              type: "group",
+              label: "工作空间",
+              children: [
+                { key: "dashboard", icon: <AppstoreOutlined />, label: text.dashboard },
+                { key: "documents", icon: <FileTextOutlined />, label: text.documents },
+                { key: "business-matters", icon: <FolderOpenOutlined />, label: "项目与事项" },
+                { key: "assets", icon: <DatabaseOutlined />, label: text.assets },
+                { key: "finance", icon: <AccountBookOutlined />, label: text.financePackages },
+              ],
+            },
+            {
+              type: "group",
+              label: "协作与治理",
+              children: [
+                ...(user.role === "ADMIN"
+                  ? [{ key: "recycle", icon: <DeleteOutlined />, label: text.recycleBin }]
+                  : []),
+                { key: "categories", icon: <SettingOutlined />, label: text.categories },
+                ...(user.role === "ADMIN"
+                  ? [{ key: "ai-settings", icon: <ApiOutlined />, label: text.aiSettings }]
+                  : []),
+              ],
+            },
           ]}
           onClick={({ key }) => setPage(key as PageKey)}
         />
@@ -2064,6 +2094,8 @@ export default function App() {
               categories={categories}
               onOpenDocument={openDocumentDetail}
             />
+          ) : page === "assets" ? (
+            <AssetsPage />
           ) : page === "finance" ? (
             <FinancePackagesPage
               onOpenDocument={openDocumentDetail}
@@ -3298,7 +3330,6 @@ function VersionUpdateDrawer({
 
   useEffect(() => {
     if (!document) {
-      form.resetFields();
       onFileChange(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -3320,7 +3351,12 @@ function VersionUpdateDrawer({
       }
     >
       {document ? (
-        <Form form={form} layout="vertical" onFinish={(values) => void onSubmit(values)}>
+        <Form
+          form={form}
+          layout="vertical"
+          clearOnDestroy
+          onFinish={(values) => void onSubmit(values)}
+        >
           <Alert type="info" showIcon message={text.versionUpdateHint} />
           <Descriptions bordered column={1} size="small" className="version-update-summary">
             <Descriptions.Item label={text.fileName}>{document.title}</Descriptions.Item>
@@ -3732,7 +3768,6 @@ function UploadDrawer({
 
   useEffect(() => {
     if (!open) {
-      form.resetFields();
       onFilesChange([]);
     }
   }, [form, onFilesChange, open]);
@@ -3750,7 +3785,12 @@ function UploadDrawer({
         </Button>
       }
     >
-      <Form form={form} layout="vertical" onFinish={(values) => void onSubmit(values)}>
+      <Form
+        form={form}
+        layout="vertical"
+        clearOnDestroy
+        onFinish={(values) => void onSubmit(values)}
+      >
         <Form.Item label={text.fileName} required>
           <input
             ref={fileInputRef}

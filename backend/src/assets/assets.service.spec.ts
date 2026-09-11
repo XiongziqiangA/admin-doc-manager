@@ -47,6 +47,7 @@ describe("AssetsService", () => {
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn(),
     },
     department: { findFirst: vi.fn() },
     user: { findFirst: vi.fn() },
@@ -81,7 +82,7 @@ describe("AssetsService", () => {
   let service: AssetsService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     authorization.assertAllPermissions.mockResolvedValue(undefined);
     prisma.assetType.findFirst.mockResolvedValue({
       id: "type-1",
@@ -126,6 +127,38 @@ describe("AssetsService", () => {
       pageSize: 100,
       totalItems: 246,
       totalPages: 3,
+    });
+  });
+
+  it("builds organization-scoped asset overview metrics", async () => {
+    prisma.asset.count
+      .mockResolvedValueOnce(246)
+      .mockResolvedValueOnce(212)
+      .mockResolvedValueOnce(180)
+      .mockResolvedValueOnce(17);
+    prisma.pendingAsset.count.mockResolvedValue(3);
+
+    await expect(service.overview(admin)).resolves.toEqual({
+      total: 246,
+      active: 212,
+      available: 180,
+      borrowed: 17,
+      pending: 3,
+    });
+    expect(prisma.asset.count).toHaveBeenNthCalledWith(1, {
+      where: { organizationId: "org-1", archivedAt: null },
+    });
+    expect(prisma.asset.count).toHaveBeenNthCalledWith(2, {
+      where: { organizationId: "org-1", archivedAt: null, assetStatus: "active" },
+    });
+    expect(prisma.asset.count).toHaveBeenNthCalledWith(3, {
+      where: { organizationId: "org-1", archivedAt: null, resourceStatus: "available" },
+    });
+    expect(prisma.asset.count).toHaveBeenNthCalledWith(4, {
+      where: { organizationId: "org-1", archivedAt: null, resourceStatus: "borrowed" },
+    });
+    expect(prisma.pendingAsset.count).toHaveBeenCalledWith({
+      where: { organizationId: "org-1", status: "pending" },
     });
   });
 

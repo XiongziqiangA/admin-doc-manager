@@ -74,6 +74,11 @@ export class AssetsController {
     return this.assetsService.confirmPending(user, id, dto);
   }
 
+  @Get("overview")
+  overview(@CurrentUser() user: PublicUser) {
+    return this.assetsService.overview(user);
+  }
+
   @Get()
   list(@Query() query: ListAssetsDto, @CurrentUser() user: PublicUser) {
     return this.assetsService.list(user, query);

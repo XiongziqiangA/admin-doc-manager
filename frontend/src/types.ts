@@ -30,6 +30,14 @@ export type BusinessFollowUpMethod = "CALL" | "WECHAT" | "EMAIL" | "MEETING" | "
 export type BusinessFinanceKind = "LOAN" | "REIMBURSEMENT";
 export type BusinessFinanceStatus = "DRAFT" | "PENDING" | "APPROVED" | "PAID" | "SETTLED" | "REJECTED" | "CANCELLED";
 export type BusinessContractStatus = "DRAFT" | "ACTIVE" | "EXPIRED" | "TERMINATED";
+export type AssetStatus = "active" | "pending" | "unavailable" | "archived";
+export type AssetResourceStatus =
+  | "available"
+  | "reserved"
+  | "borrowed"
+  | "transferring"
+  | "unavailable"
+  | "return_pending";
 
 export interface FinanceAiConfig {
   enabled: boolean;
@@ -80,6 +88,104 @@ export interface Pagination {
   pageSize: number;
   totalItems: number;
   totalPages: number;
+}
+
+export interface AssetFieldDefinition {
+  key: string;
+  name: string;
+  type: "text" | "number" | "date" | "select" | "boolean";
+  required?: boolean;
+  options?: string[];
+}
+
+export interface AssetTypeRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  parentId: string | null;
+  enabled: boolean;
+  fieldSchema: AssetFieldDefinition[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetLocationRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  code: string;
+  parentId: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetIdentifierRecord {
+  id: string;
+  assetId: string;
+  identifierType: string;
+  value: string;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface AssetRecord {
+  id: string;
+  organizationId: string;
+  businessMatterId: string | null;
+  assetTypeId: string;
+  departmentId: string | null;
+  locationId: string | null;
+  assetCode: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  supplier: string | null;
+  purchaseDate: string | null;
+  purchaseAmount: string | null;
+  assetStatus: AssetStatus;
+  resourceStatus: AssetResourceStatus;
+  ownerUserId: string | null;
+  usingUserId: string | null;
+  customFields: Record<string, unknown>;
+  description: string | null;
+  source: string;
+  qrToken: string;
+  version: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  assetType: AssetTypeRecord;
+  department?: { id: string; name: string } | null;
+  location?: { id: string; name: string } | null;
+  owner?: { id: string; realName: string; username: string } | null;
+  usingUser?: { id: string; realName: string; username: string } | null;
+  identifiers?: AssetIdentifierRecord[];
+}
+
+export interface AssetOverview {
+  total: number;
+  active: number;
+  available: number;
+  borrowed: number;
+  pending: number;
+}
+
+export interface AssetListQuery {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  assetTypeId?: string;
+  departmentId?: string;
+  locationId?: string;
+  businessMatterId?: string;
+  assetStatus?: AssetStatus;
+  resourceStatus?: AssetResourceStatus;
+  sortBy?: "updatedAt" | "createdAt" | "name" | "assetCode" | "purchaseAmount";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface ApiList<T> {

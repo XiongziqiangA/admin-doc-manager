@@ -237,6 +237,19 @@ export class AssetsService {
     };
   }
 
+  async overview(user: PublicUser) {
+    await this.assertPermission(user, PERMISSIONS.ASSET_READ);
+    const organizationId = this.organizationId(user);
+    const [total, active, available, borrowed, pending] = await this.prisma.$transaction([
+      this.prisma.asset.count({ where: { organizationId, archivedAt: null } }),
+      this.prisma.asset.count({ where: { organizationId, archivedAt: null, assetStatus: "active" } }),
+      this.prisma.asset.count({ where: { organizationId, archivedAt: null, resourceStatus: "available" } }),
+      this.prisma.asset.count({ where: { organizationId, archivedAt: null, resourceStatus: "borrowed" } }),
+      this.prisma.pendingAsset.count({ where: { organizationId, status: "pending" } }),
+    ]);
+    return { total, active, available, borrowed, pending };
+  }
+
   async findById(user: PublicUser, id: string) {
     await this.assertPermission(user, PERMISSIONS.ASSET_READ);
     const organizationId = this.organizationId(user);

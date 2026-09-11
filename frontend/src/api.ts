@@ -3,6 +3,11 @@ import axios, { AxiosRequestConfig } from "axios";
 import type {
   ApiEnvelope,
   ApiList,
+  AssetListQuery,
+  AssetLocationRecord,
+  AssetOverview,
+  AssetRecord,
+  AssetTypeRecord,
   BusinessMatterDetail,
   BusinessProjectPlan,
   BusinessMatterDocumentLink,
@@ -125,6 +130,34 @@ export async function listDocuments(query: DocumentListQuery, recycle = false) {
     method: "GET",
     url: recycle ? "/documents/recycle" : "/documents",
     params: query,
+  });
+}
+
+export async function listAssets(query: AssetListQuery) {
+  return request<ApiList<AssetRecord>>({ method: "GET", url: "/assets", params: query });
+}
+
+export async function getAsset(id: string) {
+  return request<AssetRecord>({ method: "GET", url: `/assets/${id}` });
+}
+
+export async function getAssetOverview() {
+  return request<AssetOverview>({ method: "GET", url: "/assets/overview" });
+}
+
+export async function listAssetTypes(includeDisabled = false) {
+  return request<AssetTypeRecord[]>({
+    method: "GET",
+    url: "/assets/types",
+    params: { includeDisabled },
+  });
+}
+
+export async function listAssetLocations(includeDisabled = false) {
+  return request<AssetLocationRecord[]>({
+    method: "GET",
+    url: "/assets/locations",
+    params: { includeDisabled },
   });
 }
 
