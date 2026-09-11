@@ -357,6 +357,75 @@ body {
   margin-bottom: 20px;
 }
 
+.circulation-band,
+.approvals-band {
+  min-width: 0;
+  border-radius: 6px;
+}
+
+.circulation-alert {
+  margin-bottom: 14px;
+}
+
+.circulation-table .ant-table-cell {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+
+.circulation-table .ant-btn-link {
+  height: auto;
+  padding: 3px 5px;
+}
+
+.circulation-cell-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.circulation-cell-stack .ant-typography {
+  min-width: 0;
+  margin: 0;
+}
+
+.circulation-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.approval-status-filter {
+  width: 128px;
+}
+
+.approval-history-title {
+  margin-top: 22px !important;
+  margin-bottom: 16px !important;
+}
+
+.approval-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.approval-history-item .ant-typography {
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .circulation-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .approval-status-filter {
+    width: 100%;
+  }
+}
+
 .asset-master-toolbar {
   display: flex;
   align-items: center;

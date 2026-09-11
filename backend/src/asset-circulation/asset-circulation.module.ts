@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AuthorizationModule } from "../authorization/authorization.module";
 import { IdempotencyService } from "../common/idempotency.service";
+import { UsersModule } from "../users/users.module";
 import { AssetCirculationController } from "./asset-circulation.controller";
 import { AssetBorrowsController } from "./asset-borrows.controller";
 import { AssetBorrowsService } from "./asset-borrows.service";
@@ -12,7 +13,7 @@ import { AssetTransfersController } from "./asset-transfers.controller";
 import { AssetTransfersService } from "./asset-transfers.service";
 
 @Module({
-  imports: [AuthModule, AuthorizationModule],
+  imports: [AuthModule, AuthorizationModule, UsersModule],
   controllers: [AssetCirculationController, AssetBorrowsController, AssetTransfersController],
   providers: [AssetReservationsService, AssetBorrowsService, AssetTransfersService, IdempotencyService, JwtAuthGuard],
   exports: [AssetReservationsService, AssetBorrowsService, AssetTransfersService],

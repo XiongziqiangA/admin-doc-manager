@@ -5,6 +5,9 @@ import type {
   ApiList,
   AssetListQuery,
   AssetIdentifierRecord,
+  AssetBorrowRecord,
+  AssetReservationRecord,
+  AssetTransferRecord,
   AssetLocationRecord,
   AssetOverview,
   AssetRecord,
@@ -48,6 +51,7 @@ import type {
   PartnerRecord,
   PublicUser,
   SearchAssistantResponse,
+  ApprovalRecord,
   TagRecord,
   UserRecord,
 } from "./types";
@@ -244,6 +248,85 @@ export async function deleteAssetIdentifier(assetId: string, identifierId: strin
     method: "DELETE",
     url: `/assets/${assetId}/identifiers/${identifierId}`,
   });
+}
+
+export async function listAssetReservations(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetReservationRecord>>({ method: "GET", url: "/asset-reservations", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetReservation(payload: Record<string, unknown>) {
+  return request<AssetReservationRecord>({
+    method: "POST",
+    url: "/asset-reservations",
+    data: payload,
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
+}
+
+export async function cancelAssetReservation(id: string, reason?: string) {
+  return request<AssetReservationRecord>({ method: "PATCH", url: `/asset-reservations/${id}/cancel`, data: { reason } });
+}
+
+export async function listAssetBorrows(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetBorrowRecord>>({ method: "GET", url: "/asset-borrows", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetBorrow(payload: Record<string, unknown>) {
+  return request<AssetBorrowRecord>({
+    method: "POST",
+    url: "/asset-borrows",
+    data: payload,
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
+}
+
+export async function cancelAssetBorrow(id: string, reason?: string) {
+  return request<AssetBorrowRecord>({ method: "PATCH", url: `/asset-borrows/${id}/cancel`, data: { reason } });
+}
+
+export async function checkoutAssetBorrow(id: string, payload: { items?: string[]; note?: string }) {
+  return request<AssetBorrowRecord>({ method: "POST", url: `/asset-borrows/${id}/handover`, data: payload });
+}
+
+export async function requestAssetReturn(id: string, note?: string) {
+  return request<AssetBorrowRecord>({ method: "POST", url: `/asset-borrows/${id}/return-request`, data: { note } });
+}
+
+export async function confirmAssetReturn(id: string, payload: { items?: string[]; note?: string }) {
+  return request<AssetBorrowRecord>({ method: "POST", url: `/asset-borrows/${id}/return-confirm`, data: payload });
+}
+
+export async function listAssetTransfers(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<AssetTransferRecord>>({ method: "GET", url: "/asset-transfers", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function createAssetTransfer(payload: Record<string, unknown>) {
+  return request<AssetTransferRecord>({
+    method: "POST",
+    url: "/asset-transfers",
+    data: payload,
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
+}
+
+export async function completeAssetTransfer(id: string, payload: { items?: string[]; note?: string }) {
+  return request<AssetTransferRecord>({ method: "POST", url: `/asset-transfers/${id}/complete`, data: payload });
+}
+
+export async function cancelAssetTransfer(id: string) {
+  return request<AssetTransferRecord>({ method: "PATCH", url: `/asset-transfers/${id}/cancel` });
+}
+
+export async function listApprovals(params: Record<string, string | number | undefined> = {}) {
+  return request<ApiList<ApprovalRecord>>({ method: "GET", url: "/approvals", params: { page: 1, pageSize: 20, ...params } });
+}
+
+export async function approveRequest(id: string, comment?: string) {
+  return request<ApprovalRecord>({ method: "POST", url: `/approvals/${id}/approve`, data: { comment } });
+}
+
+export async function rejectRequest(id: string, comment?: string) {
+  return request<ApprovalRecord>({ method: "POST", url: `/approvals/${id}/reject`, data: { comment } });
 }
 
 export async function listBusinessMatters(params: Record<string, string | number | undefined> = {}) {
@@ -699,7 +782,7 @@ export async function listUsers() {
   return request<ApiList<UserRecord>>({
     method: "GET",
     url: "/users",
-    params: { page: 1, pageSize: 200 },
+    params: { page: 1, pageSize: 100 },
   });
 }
 

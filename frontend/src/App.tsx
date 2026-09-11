@@ -22,6 +22,7 @@ import {
   PrinterOutlined,
   ReloadOutlined,
   RobotOutlined,
+  SafetyCertificateOutlined,
   SettingOutlined,
   SwapOutlined,
   UndoOutlined,
@@ -103,6 +104,8 @@ import { FinancePackagesPage } from "./finance-packages-page";
 import { AiSettingsPage } from "./ai-settings-page";
 import { BusinessMattersPage } from "./business-matters-page";
 import { AssetsPage } from "./assets-page";
+import { AssetCirculationPage } from "./asset-circulation-page";
+import { ApprovalsPage } from "./approvals-page";
 
 declare global {
   interface Window {
@@ -315,6 +318,9 @@ const text = {
   categories: "\u5206\u7c7b\u7ba1\u7406",
   financePackages: "财务归集",
   assets: "资产设备",
+  assetRegister: "资产台账",
+  assetCirculation: "资产流转",
+  approvals: "审批中心",
   aiSettings: "AI 接口配置",
   admin: "\u7ba1\u7406\u5458",
   employee: "\u5458\u5de5",
@@ -562,7 +568,9 @@ type PageKey =
   | "finance"
   | "ai-settings"
   | "business-matters"
-  | "assets";
+  | "assets"
+  | "asset-circulation"
+  | "approvals";
 const WEB_REMEMBERED_USERNAME_KEY = "enterprise-admin-docs.remembered-username";
 
 interface LoginFormValues {
@@ -1967,6 +1975,7 @@ export default function App() {
         <Menu
           theme="dark"
           mode="inline"
+          defaultOpenKeys={["asset-module"]}
           selectedKeys={[page]}
           items={[
             {
@@ -1976,7 +1985,15 @@ export default function App() {
                 { key: "dashboard", icon: <AppstoreOutlined />, label: text.dashboard },
                 { key: "documents", icon: <FileTextOutlined />, label: text.documents },
                 { key: "business-matters", icon: <FolderOpenOutlined />, label: "项目与事项" },
-                { key: "assets", icon: <DatabaseOutlined />, label: text.assets },
+                {
+                  key: "asset-module",
+                  icon: <DatabaseOutlined />,
+                  label: text.assets,
+                  children: [
+                    { key: "assets", label: text.assetRegister },
+                    { key: "asset-circulation", label: text.assetCirculation },
+                  ],
+                },
                 { key: "finance", icon: <AccountBookOutlined />, label: text.financePackages },
               ],
             },
@@ -1984,6 +2001,7 @@ export default function App() {
               type: "group",
               label: "协作与治理",
               children: [
+                { key: "approvals", icon: <SafetyCertificateOutlined />, label: text.approvals },
                 ...(user.role === "ADMIN"
                   ? [{ key: "recycle", icon: <DeleteOutlined />, label: text.recycleBin }]
                   : []),
@@ -2100,6 +2118,10 @@ export default function App() {
               departments={departments}
               onOpenDocument={openDocumentDetail}
             />
+          ) : page === "asset-circulation" ? (
+            <AssetCirculationPage currentUser={user} departments={departments} />
+          ) : page === "approvals" ? (
+            <ApprovalsPage currentUser={user} />
           ) : page === "finance" ? (
             <FinancePackagesPage
               onOpenDocument={openDocumentDetail}

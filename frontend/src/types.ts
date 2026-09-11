@@ -38,6 +38,11 @@ export type AssetResourceStatus =
   | "transferring"
   | "unavailable"
   | "return_pending";
+export type AssetReservationStatus = "PENDING" | "APPROVED" | "ACTIVE" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
+export type AssetBorrowStatus = "REQUESTED" | "APPROVED" | "ACTIVE" | "RETURN_PENDING" | "RETURNED" | "REJECTED" | "CANCELLED";
+export type AssetTransferStatus = "PENDING" | "APPROVED" | "IN_TRANSIT" | "COMPLETED" | "REJECTED" | "CANCELLED";
+export type ApprovalBusinessType = "ASSET_RESERVATION" | "ASSET_BORROW" | "ASSET_TRANSFER";
+export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 export interface FinanceAiConfig {
   enabled: boolean;
@@ -196,6 +201,130 @@ export interface AssetPendingRecord {
   reviewedAt: string | null;
   submittedBy?: { id: string; realName: string } | null;
   reviewedBy?: { id: string; realName: string } | null;
+}
+
+export interface AssetSummary {
+  id: string;
+  assetCode: string;
+  name: string;
+  version?: number;
+  assetStatus?: AssetStatus;
+  resourceStatus: AssetResourceStatus;
+}
+
+export interface CirculationApplicant {
+  id: string;
+  realName: string;
+  username: string;
+}
+
+export interface AssetReservationRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  applicantId: string;
+  businessMatterId: string | null;
+  approvalId: string | null;
+  startAt: string;
+  endAt: string;
+  purpose: string;
+  status: AssetReservationStatus;
+  cancelReason: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  asset: AssetSummary;
+  applicant: CirculationApplicant;
+  businessMatter?: { id: string; matterNo: string; title: string } | null;
+  approval?: { id: string; status: ApprovalStatus; comment: string | null; completedAt: string | null } | null;
+}
+
+export interface AssetHandoverRecord {
+  id: string;
+  handoverType: "CHECKOUT" | "RETURN" | "TRANSFER";
+  itemsSnapshot: string[];
+  note: string | null;
+  status: "DRAFT" | "CONFIRMED" | "CANCELLED";
+  createdAt: string;
+  confirmedAt: string | null;
+}
+
+export interface AssetBorrowRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  applicantId: string;
+  reservationId: string | null;
+  businessMatterId: string | null;
+  approvalId: string | null;
+  borrowStart: string;
+  borrowEnd: string;
+  actualReturnAt: string | null;
+  purpose: string;
+  note: string | null;
+  status: AssetBorrowStatus;
+  cancelReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  asset: AssetSummary;
+  applicant: CirculationApplicant;
+  reservation?: Pick<AssetReservationRecord, "id" | "startAt" | "endAt" | "status"> | null;
+  businessMatter?: { id: string; matterNo: string; title: string } | null;
+  approval?: { id: string; status: ApprovalStatus; comment: string | null; completedAt: string | null } | null;
+  handovers?: AssetHandoverRecord[];
+}
+
+export interface AssetTransferRecord {
+  id: string;
+  organizationId: string;
+  assetId: string;
+  approvalId: string | null;
+  fromDepartmentId: string | null;
+  toDepartmentId: string | null;
+  fromLocationId: string | null;
+  toLocationId: string | null;
+  fromOwnerId: string | null;
+  toOwnerId: string | null;
+  reason: string;
+  status: AssetTransferStatus;
+  createdAt: string;
+  completedAt: string | null;
+  asset: AssetSummary;
+  fromDepartment?: { id: string; name: string } | null;
+  toDepartment?: { id: string; name: string } | null;
+  fromLocation?: { id: string; name: string } | null;
+  toLocation?: { id: string; name: string } | null;
+  fromOwner?: CirculationApplicant | null;
+  toOwner?: CirculationApplicant | null;
+  createdBy?: CirculationApplicant;
+  approval?: { id: string; status: ApprovalStatus; comment: string | null; completedAt: string | null } | null;
+  handovers?: AssetHandoverRecord[];
+}
+
+export interface ApprovalActionRecord {
+  id: string;
+  action: "SUBMIT" | "APPROVE" | "REJECT" | "CANCEL";
+  comment: string | null;
+  createdAt: string;
+  actor: CirculationApplicant;
+}
+
+export interface ApprovalRecord {
+  id: string;
+  organizationId: string;
+  businessType: ApprovalBusinessType;
+  businessId: string;
+  applicantId: string;
+  status: ApprovalStatus;
+  comment: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  applicant: CirculationApplicant;
+  assignedTo?: CirculationApplicant | null;
+  actions: ApprovalActionRecord[];
+  reservation?: AssetReservationRecord | null;
+  borrow?: AssetBorrowRecord | null;
+  transfer?: AssetTransferRecord | null;
 }
 
 export interface AssetListQuery {
