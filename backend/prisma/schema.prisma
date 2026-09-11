@@ -416,6 +416,7 @@ model User {
   appliedApprovals                  Approval[]                    @relation("ApprovalApplicant")
   assignedApprovals                 Approval[]                    @relation("ApprovalAssignee")
   approvalActions                   ApprovalAction[]              @relation("ApprovalActionActor")
+  notifications                     Notification[]                @relation("NotificationRecipient")
   assetEvents                       AssetEvent[]                  @relation("AssetEventActor")
   ownedInventoryTasks               AssetInventoryTask[]          @relation("AssetInventoryOwner")
   createdInventoryTasks             AssetInventoryTask[]          @relation("AssetInventoryCreatedBy")
@@ -455,6 +456,7 @@ model Organization {
   assetAnomalies          AssetAnomaly[]
   assetExitRequests       AssetExitRequest[]
   approvals               Approval[]
+  notifications           Notification[]
   assetEvents             AssetEvent[]
   auditLogs               AuditLog[]
   idempotencyRecords      IdempotencyRecord[]
@@ -1124,6 +1126,29 @@ model ApprovalAction {
   @@index([approvalId, createdAt])
   @@index([actorId, createdAt])
   @@map("approval_actions")
+}
+
+model Notification {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  recipientId    String       @map("recipient_id")
+  type           String
+  title          String
+  message        String       @db.Text
+  entityType     String       @map("entity_type")
+  entityId       String       @map("entity_id")
+  dedupeKey      String       @unique @map("dedupe_key")
+  metadata       Json?
+  readAt         DateTime?    @map("read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  expiresAt      DateTime?    @map("expires_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient      User         @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, readAt, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@map("notifications")
 }
 
 model AssetEvent {

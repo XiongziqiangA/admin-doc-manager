@@ -235,6 +235,32 @@ export interface GlobalSearchResponse {
   total: number;
 }
 
+export interface NotificationRecord {
+  id: string;
+  organizationId: string;
+  recipientId: string;
+  type: string;
+  title: string;
+  message: string;
+  entityType: string;
+  entityId: string;
+  metadata: Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface NotificationListResponse {
+  items: NotificationRecord[];
+  unreadCount: number;
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+}
+
 export interface AssetEventRecord {
   id: string;
   organizationId: string;

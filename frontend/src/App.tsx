@@ -3,6 +3,8 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   ArrowRightOutlined,
+  BellOutlined,
+  CheckOutlined,
   ClockCircleOutlined,
   DatabaseOutlined,
   DeleteOutlined,
@@ -34,6 +36,7 @@ import {
 } from "@ant-design/icons";
 import {
   Alert,
+  Badge,
   Button,
   Cascader,
   Checkbox,
@@ -81,9 +84,12 @@ import {
   listCategories,
   listDepartments,
   listDocuments,
+  listNotifications,
   listPartners,
   listTags,
   login,
+  markAllNotificationsRead,
+  markNotificationRead,
   permanentlyDeleteDocument,
   rebuildDocumentContentIndex,
   restoreDocument,
@@ -104,6 +110,8 @@ import type {
   PartnerRecord,
   PublicUser,
   GlobalSearchResponse,
+  NotificationListResponse,
+  NotificationRecord,
   SearchAssistantResponse,
   TagRecord,
   WorkspaceOverview,
@@ -381,6 +389,14 @@ const text = {
   globalSearchNoResults: "\u6ca1\u6709\u627e\u5230\u5339\u914d\u7684\u5185\u5bb9",
   openModule: "\u6253\u5f00\u6a21\u5757",
   workspaceRefreshHint: "\u91cd\u65b0\u52a0\u8f7d\u5de5\u4f5c\u53f0\u6570\u636e",
+  notifications: "\u901a\u77e5\u4e2d\u5fc3",
+  noNotifications: "\u6682\u65e0\u901a\u77e5",
+  markAllNotificationsRead: "\u5168\u90e8\u6807\u8bb0\u4e3a\u5df2\u8bfb",
+  notificationMarkedRead: "\u5df2\u6807\u8bb0\u4e3a\u5df2\u8bfb",
+  notificationReadFailed: "\u6807\u8bb0\u901a\u77e5\u5931\u8d25",
+  notificationsReadAll: "\u5df2\u5168\u90e8\u6807\u8bb0\u4e3a\u5df2\u8bfb",
+  notificationUnreadCount: "\u672a\u8bfb",
+  notificationOpenRelated: "\u67e5\u770b\u76f8\u5173\u6a21\u5757",
   noDocuments: "\u8fd8\u6ca1\u6709\u4e0a\u4f20\u6587\u4ef6",
   noCategories: "\u6682\u65e0\u5206\u7c7b",
   categoryLoading: "\u5206\u7c7b\u52a0\u8f7d\u4e2d\u6216\u6682\u65f6\u4e3a\u7a7a",
@@ -956,6 +972,10 @@ export default function App() {
   const [globalSearchResult, setGlobalSearchResult] = useState<GlobalSearchResponse | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationLoading, setNotificationLoading] = useState(false);
   const [documentSearchDocuments, setDocumentSearchDocuments] = useState<DocumentRecord[]>([]);
   const [documentSearchLoading, setDocumentSearchLoading] = useState(false);
   const [documentSearchTotal, setDocumentSearchTotal] = useState(0);
@@ -1071,6 +1091,24 @@ export default function App() {
     setDuplicatePrompt(null);
   };
 
+  const loadNotifications = async (showError = false) => {
+    if (!getStoredToken()) {
+      return;
+    }
+    setNotificationLoading(true);
+    try {
+      const result = await listNotifications();
+      setNotifications(result.items);
+      setNotificationUnreadCount(result.unreadCount);
+    } catch (error) {
+      if (showError) {
+        message.error(`${text.notificationReadFailed}: ${formatApiError(error)}`);
+      }
+    } finally {
+      setNotificationLoading(false);
+    }
+  };
+
   const loadData = async () => {
     if (!getStoredToken()) {
       return;
@@ -1078,6 +1116,7 @@ export default function App() {
     setLoading(true);
     try {
       const currentUser = getStoredUser();
+      void loadNotifications();
       setWorkspaceOverviewLoading(true);
       const results = await Promise.allSettled([
         fetchAllDocuments(false, { sortBy: "updatedAt", sortOrder: "desc" }),
@@ -1162,6 +1201,45 @@ export default function App() {
   const openGlobalSearchModule = (nextPage: PageKey) => {
     setGlobalSearchOpen(false);
     setPage(nextPage);
+  };
+
+  const handleNotificationRead = async (notification: NotificationRecord) => {
+    if (notification.readAt) {
+      return;
+    }
+    try {
+      const updated = await markNotificationRead(notification.id);
+      setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, readAt: updated.readAt } : item));
+      setNotificationUnreadCount((count) => Math.max(0, count - 1));
+    } catch (error) {
+      message.error(`${text.notificationReadFailed}: ${formatApiError(error)}`);
+    }
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!notificationUnreadCount) {
+      return;
+    }
+    try {
+      await markAllNotificationsRead();
+      const readAt = new Date().toISOString();
+      setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt ?? readAt })));
+      setNotificationUnreadCount(0);
+      message.success(text.notificationsReadAll);
+    } catch (error) {
+      message.error(`${text.notificationReadFailed}: ${formatApiError(error)}`);
+    }
+  };
+
+  const openNotificationEntity = (notification: NotificationRecord) => {
+    setNotificationOpen(false);
+    if (notification.entityType === "approval") {
+      setPage("approvals");
+    } else if (notification.entityType === "asset_borrow") {
+      setPage("asset-circulation");
+    } else {
+      setPage("business-matters");
+    }
   };
 
   const runAssistantSearch = async () => {
@@ -2153,6 +2231,18 @@ export default function App() {
             onSearch={(value) => void runGlobalSearch(value)}
           />
           <Space>
+            <Badge count={notificationUnreadCount} overflowCount={99} size="small">
+              <Button
+                type="text"
+                icon={<BellOutlined />}
+                aria-label={text.notifications}
+                title={text.notifications}
+                onClick={() => {
+                  setNotificationOpen(true);
+                  void loadNotifications(true);
+                }}
+              />
+            </Badge>
             <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()}>
               {text.refresh}
             </Button>
@@ -2315,6 +2405,19 @@ export default function App() {
         onOpenDocument={(documentId) => void openGlobalSearchDocument(documentId)}
         onOpenMatter={() => openGlobalSearchModule("business-matters")}
         onOpenAsset={() => openGlobalSearchModule("assets")}
+      />
+      <NotificationDrawer
+        open={notificationOpen}
+        items={notifications}
+        unreadCount={notificationUnreadCount}
+        loading={notificationLoading}
+        onClose={() => setNotificationOpen(false)}
+        onMarkRead={(item) => void handleNotificationRead(item)}
+        onMarkAllRead={() => void handleMarkAllNotificationsRead()}
+        onOpenEntity={(item) => {
+          void handleNotificationRead(item);
+          openNotificationEntity(item);
+        }}
       />
       <Modal
         title={text.duplicateFileTitle}
@@ -3236,6 +3339,74 @@ function GlobalSearchDrawer({
               </section>
             )}
           </div>
+        )}
+      </Spin>
+    </Drawer>
+  );
+}
+
+function NotificationDrawer({
+  open,
+  items,
+  unreadCount,
+  loading,
+  onClose,
+  onMarkRead,
+  onMarkAllRead,
+  onOpenEntity,
+}: {
+  open: boolean;
+  items: NotificationRecord[];
+  unreadCount: number;
+  loading: boolean;
+  onClose: () => void;
+  onMarkRead: (item: NotificationRecord) => void;
+  onMarkAllRead: () => void;
+  onOpenEntity: (item: NotificationRecord) => void;
+}) {
+  return (
+    <Drawer
+      title={text.notifications}
+      width={480}
+      open={open}
+      onClose={onClose}
+      destroyOnHidden
+      extra={
+        <Button type="link" disabled={!unreadCount || loading} onClick={onMarkAllRead}>
+          {text.markAllNotificationsRead}
+        </Button>
+      }
+    >
+      <Spin spinning={loading}>
+        {items.length ? (
+          <List
+            className="notification-list"
+            dataSource={items}
+            renderItem={(item) => (
+              <List.Item className={item.readAt ? "notification-item" : "notification-item notification-item-unread"}>
+                <div className="notification-item-main">
+                  <div className="notification-item-heading">
+                    <Typography.Text strong>{item.title}</Typography.Text>
+                    {!item.readAt && <Badge status="processing" text={text.notificationUnreadCount} />}
+                  </div>
+                  <Typography.Paragraph className="notification-item-message">{item.message}</Typography.Paragraph>
+                  <Typography.Text type="secondary">{formatDate(item.createdAt)}</Typography.Text>
+                  <Space size={4} className="notification-item-actions">
+                    <Button type="link" size="small" icon={<ArrowRightOutlined />} onClick={() => onOpenEntity(item)}>
+                      {text.notificationOpenRelated}
+                    </Button>
+                    {!item.readAt && (
+                      <Button type="link" size="small" icon={<CheckOutlined />} onClick={() => onMarkRead(item)}>
+                        {text.notificationMarkedRead}
+                      </Button>
+                    )}
+                  </Space>
+                </div>
+              </List.Item>
+            )}
+          />
+        ) : (
+          <Empty description={text.noNotifications} />
         )}
       </Spin>
     </Drawer>

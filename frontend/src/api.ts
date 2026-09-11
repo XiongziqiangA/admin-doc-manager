@@ -38,6 +38,7 @@ import type {
   BusinessTaskRecord,
   BusinessWorkflowOverview,
   GlobalSearchResponse,
+  NotificationListResponse,
   WorkspaceOverview,
   CategoryNode,
   DepartmentRecord,
@@ -165,6 +166,18 @@ export async function getWorkspaceOverview() {
 
 export async function globalSearch(q: string, limit = 8) {
   return request<GlobalSearchResponse>({ method: "GET", url: "/workspace/search", params: { q, limit } });
+}
+
+export async function listNotifications(page = 1, pageSize = 20, unreadOnly = false) {
+  return request<NotificationListResponse>({ method: "GET", url: "/notifications", params: { page, pageSize, unreadOnly } });
+}
+
+export async function markNotificationRead(id: string) {
+  return request<{ id: string; readAt: string | null }>({ method: "PATCH", url: `/notifications/${id}/read` });
+}
+
+export async function markAllNotificationsRead() {
+  return request<{ updatedCount: number }>({ method: "POST", url: "/notifications/read-all" });
 }
 
 export async function listAssetEvents(assetId: string, page = 1, pageSize = 20) {

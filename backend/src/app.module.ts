@@ -20,6 +20,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { TagsModule } from "./tags/tags.module";
 import { UsersModule } from "./users/users.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
     DocumentsModule,
     FinancePackagesModule,
     WorkspaceModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

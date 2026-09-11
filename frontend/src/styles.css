@@ -455,6 +455,50 @@ body {
   gap: 10px;
 }
 
+.notification-list .ant-list-item {
+  align-items: flex-start;
+  padding: 14px 0;
+}
+
+.notification-item-unread {
+  padding-left: 10px !important;
+  border-left: 3px solid #2d6cdf;
+}
+
+.notification-item-main {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notification-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-item-heading .ant-badge-status-text {
+  color: #2d6cdf;
+  font-size: 12px;
+}
+
+.notification-item-message {
+  margin: 0 !important;
+  line-height: 1.55;
+}
+
+.notification-item-main > .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.notification-item-actions {
+  flex-wrap: wrap;
+  margin-top: 3px;
+}
+
 .asset-page-heading {
   display: flex;
   align-items: flex-start;
