@@ -130,6 +130,14 @@ export interface AssetIdentifierRecord {
   createdAt: string;
 }
 
+export interface AssetDocumentLink {
+  organizationId: string;
+  assetId: string;
+  documentId: string;
+  createdAt: string;
+  document: DocumentRecord;
+}
+
 export interface AssetRecord {
   id: string;
   organizationId: string;
@@ -164,6 +172,7 @@ export interface AssetRecord {
   owner?: { id: string; realName: string; username: string } | null;
   usingUser?: { id: string; realName: string; username: string } | null;
   identifiers?: AssetIdentifierRecord[];
+  documents?: AssetDocumentLink[];
 }
 
 export interface AssetOverview {

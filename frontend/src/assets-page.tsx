@@ -5,6 +5,8 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
+  LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -23,6 +25,7 @@ import {
   Form,
   Input,
   InputNumber,
+  List,
   Modal,
   Pagination,
   Row,
@@ -42,6 +45,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   formatApiError,
   confirmPendingAsset,
+  attachAssetDocuments,
   createAsset,
   createAssetIdentifier,
   createAssetLocation,
@@ -51,6 +55,8 @@ import {
   deleteAssetIdentifier,
   getAsset,
   getAssetOverview,
+  detachAssetDocument,
+  listDocuments,
   listBusinessMatters,
   listAssetLocations,
   listPendingAssets,
@@ -65,6 +71,7 @@ import {
 import type {
   AssetFieldDefinition,
   AssetIdentifierRecord,
+  AssetDocumentLink,
   AssetListQuery,
   AssetLocationRecord,
   AssetOverview,
@@ -75,6 +82,7 @@ import type {
   AssetTypeRecord,
   BusinessMatterRecord,
   DepartmentRecord,
+  DocumentRecord,
   PublicUser,
   UserRecord,
 } from "./types";
@@ -152,6 +160,7 @@ async function listAllProjects() {
 interface AssetsPageProps {
   currentUser: PublicUser;
   departments: DepartmentRecord[];
+  onOpenDocument: (document: DocumentRecord) => void | Promise<void>;
 }
 
 type AssetFormValues = {
@@ -176,7 +185,7 @@ type AssetFormValues = {
   reviewNote?: string;
 };
 
-export function AssetsPage({ currentUser, departments }: AssetsPageProps) {
+export function AssetsPage({ currentUser, departments, onOpenDocument }: AssetsPageProps) {
   const isAdmin = currentUser.role === "ADMIN";
   const [records, setRecords] = useState<AssetRecord[]>([]);
   const [overview, setOverview] = useState<AssetOverview>(emptyOverview);
@@ -209,6 +218,14 @@ export function AssetsPage({ currentUser, departments }: AssetsPageProps) {
   const [identifierModalOpen, setIdentifierModalOpen] = useState(false);
   const [editingIdentifier, setEditingIdentifier] = useState<AssetIdentifierRecord | null>(null);
   const [identifierForm] = Form.useForm();
+  const [documentAttachOpen, setDocumentAttachOpen] = useState(false);
+  const [documentAttachLoading, setDocumentAttachLoading] = useState(false);
+  const [documentAttachSubmitting, setDocumentAttachSubmitting] = useState(false);
+  const [availableDocuments, setAvailableDocuments] = useState<DocumentRecord[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [documentAttachKeyword, setDocumentAttachKeyword] = useState("");
+  const [documentAttachPage, setDocumentAttachPage] = useState(1);
+  const [documentAttachTotal, setDocumentAttachTotal] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -458,6 +475,72 @@ export function AssetsPage({ currentUser, departments }: AssetsPageProps) {
     });
   };
 
+  const loadAvailableDocuments = async (page: number, keyword: string) => {
+    setDocumentAttachLoading(true);
+    try {
+      const result = await listDocuments({
+        page,
+        pageSize: 8,
+        keyword: keyword.trim() || undefined,
+        sortBy: "updatedAt",
+        sortOrder: "desc",
+      });
+      setAvailableDocuments(result.items);
+      setDocumentAttachTotal(result.pagination.totalItems);
+    } catch (error) {
+      message.error(`文件列表加载失败：${formatApiError(error)}`);
+    } finally {
+      setDocumentAttachLoading(false);
+    }
+  };
+
+  const openDocumentAttach = () => {
+    if (!detail) return;
+    setDocumentAttachKeyword("");
+    setDocumentAttachPage(1);
+    setSelectedDocumentIds([]);
+    setDocumentAttachOpen(true);
+    void loadAvailableDocuments(1, "");
+  };
+
+  const submitDocumentAttach = async () => {
+    if (!detail || !selectedDocumentIds.length) return;
+    setDocumentAttachSubmitting(true);
+    try {
+      await attachAssetDocuments(detail.id, selectedDocumentIds);
+      message.success(`已关联 ${selectedDocumentIds.length} 份文件`);
+      setDocumentAttachOpen(false);
+      await openDetail(detail);
+    } catch (error) {
+      message.error(`文件关联失败：${formatApiError(error)}`);
+    } finally {
+      setDocumentAttachSubmitting(false);
+    }
+  };
+
+  const removeDocumentLink = (link: AssetDocumentLink) => {
+    if (!detail) return;
+    Modal.confirm({
+      title: "取消文件关联",
+      content: `确认取消“${link.document.title}”与该资产的关联？原文件不会被删除。`,
+      okText: "取消关联",
+      cancelText: "保留关联",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          setActionLoading(true);
+          await detachAssetDocument(detail.id, link.documentId);
+          message.success("文件关联已取消");
+          await openDetail(detail);
+        } catch (error) {
+          message.error(`取消关联失败：${formatApiError(error)}`);
+        } finally {
+          setActionLoading(false);
+        }
+      },
+    });
+  };
+
   const columns: ColumnsType<AssetRecord> = [
     {
       title: "资产",
@@ -535,6 +618,10 @@ export function AssetsPage({ currentUser, departments }: AssetsPageProps) {
   ];
 
   const customFields = detail?.assetType.fieldSchema ?? [];
+  const linkedDocumentIds = new Set(detail?.documents?.map((item) => item.documentId) ?? []);
+  const filteredAvailableDocuments = availableDocuments.filter(
+    (document) => !linkedDocumentIds.has(document.id),
+  );
 
   return (
     <div className="page-stack asset-page">
@@ -755,12 +842,120 @@ export function AssetsPage({ currentUser, departments }: AssetsPageProps) {
               </Space>
             </div>
             <div>
+              <div className="asset-detail-section-heading">
+                <div>
+                  <Typography.Title level={5}>关联文件</Typography.Title>
+                  <Typography.Text type="secondary">关联行政文件中心中的资料，文件本身不会被复制。</Typography.Text>
+                </div>
+                {isAdmin ? (
+                  <Button size="small" icon={<LinkOutlined />} onClick={openDocumentAttach}>
+                    关联文件
+                  </Button>
+                ) : null}
+              </div>
+              {detail.documents?.length ? (
+                <List
+                  bordered
+                  size="small"
+                  dataSource={detail.documents}
+                  renderItem={(link) => (
+                    <List.Item
+                      actions={[
+                        <Button key="view" type="link" onClick={() => void onOpenDocument(link.document)}>
+                          查看详情
+                        </Button>,
+                        ...(isAdmin ? [
+                          <Button key="detach" type="link" danger onClick={() => removeDocumentLink(link)}>
+                            取消关联
+                          </Button>,
+                        ] : []),
+                      ]}
+                    >
+                      <List.Item.Meta
+                        avatar={<FileTextOutlined />}
+                        title={link.document.title}
+                        description={`${link.document.documentNo} · ${link.document.currentVersion?.versionLabel ?? "无版本信息"} · ${link.document.category?.name ?? "未分类"}`}
+                      />
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂未关联文件" />
+              )}
+            </div>
+            <div>
               <Typography.Title level={5}>备注</Typography.Title>
               <Typography.Paragraph>{detail.description || "暂无备注"}</Typography.Paragraph>
             </div>
           </div>
         ) : null}
       </Drawer>
+
+      <Modal
+        title="关联行政文件"
+        open={documentAttachOpen}
+        width={840}
+        okText={`关联 ${selectedDocumentIds.length || ""} 份文件`}
+        cancelText="取消"
+        confirmLoading={documentAttachSubmitting}
+        okButtonProps={{ disabled: !selectedDocumentIds.length }}
+        onOk={() => void submitDocumentAttach()}
+        onCancel={() => setDocumentAttachOpen(false)}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} className="full-width-control">
+          <Input.Search
+            allowClear
+            placeholder="搜索文件名称、编号"
+            value={documentAttachKeyword}
+            onChange={(event) => setDocumentAttachKeyword(event.target.value)}
+            onSearch={(value) => {
+              setDocumentAttachPage(1);
+              void loadAvailableDocuments(1, value);
+            }}
+          />
+          <Typography.Text type="secondary">已隐藏当前资产已关联的文件。搜索结果共 {documentAttachTotal} 份。</Typography.Text>
+          <Table<DocumentRecord>
+            rowKey="id"
+            size="small"
+            loading={documentAttachLoading}
+            dataSource={filteredAvailableDocuments}
+            columns={[
+              {
+                title: "文件名称",
+                dataIndex: "title",
+                ellipsis: true,
+                render: (value: string, record) => (
+                  <div className="asset-document-title-cell">
+                    <Typography.Text strong ellipsis={{ tooltip: value }}>{value}</Typography.Text>
+                    <Typography.Text type="secondary">{record.currentVersion?.originalFileName || record.documentNo}</Typography.Text>
+                  </div>
+                ),
+              },
+              { title: "文件编号", dataIndex: "documentNo", width: 150 },
+              { title: "版本", width: 110, render: (_, record) => record.currentVersion?.versionLabel || "-" },
+              { title: "分类", width: 130, render: (_, record) => record.category?.name || "未分类" },
+            ]}
+            rowSelection={{
+              selectedRowKeys: selectedDocumentIds,
+              onChange: (keys) => setSelectedDocumentIds(keys.map(String)),
+              preserveSelectedRowKeys: true,
+            }}
+            pagination={{
+              current: documentAttachPage,
+              pageSize: 8,
+              total: documentAttachTotal,
+              showSizeChanger: false,
+              onChange: (page) => {
+                setDocumentAttachPage(page);
+                void loadAvailableDocuments(page, documentAttachKeyword);
+              },
+            }}
+            scroll={{ y: 420 }}
+            locale={{ emptyText: <Empty description="暂无可关联文件" /> }}
+          />
+        </Space>
+      </Modal>
 
       <AssetFormDrawer
         open={assetFormOpen}

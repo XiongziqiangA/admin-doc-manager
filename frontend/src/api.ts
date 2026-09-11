@@ -147,6 +147,18 @@ export async function getAssetOverview() {
   return request<AssetOverview>({ method: "GET", url: "/assets/overview" });
 }
 
+export async function attachAssetDocuments(assetId: string, documentIds: string[]) {
+  return request<{ assetId: string; addedCount: number }>({
+    method: "POST",
+    url: `/assets/${assetId}/documents`,
+    data: { documentIds },
+  });
+}
+
+export async function detachAssetDocument(assetId: string, documentId: string) {
+  return request<void>({ method: "DELETE", url: `/assets/${assetId}/documents/${documentId}` });
+}
+
 export async function listAssetTypes(includeDisabled = false) {
   return request<AssetTypeRecord[]>({
     method: "GET",
