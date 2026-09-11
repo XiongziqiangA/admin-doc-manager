@@ -13,7 +13,8 @@
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "seed:admin": "node prisma/seed-admin.mjs",
-    "seed:base-data": "node prisma/seed-base-data.mjs"
+    "seed:base-data": "node prisma/seed-base-data.mjs",
+    "seed:enterprise-foundation": "node prisma/seed-enterprise-foundation.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.7",

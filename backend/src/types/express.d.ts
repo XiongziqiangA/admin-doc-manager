@@ -8,6 +8,7 @@ declare global {
       realName: string;
       role: UserRole;
       status: UserStatus;
+      organizationId?: string | null;
       departmentId: string | null;
       phone: string | null;
       email: string | null;

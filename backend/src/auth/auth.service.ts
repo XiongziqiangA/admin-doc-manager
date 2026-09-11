@@ -11,6 +11,7 @@ export interface JwtPayload {
   sub: string;
   username: string;
   role: string;
+  organizationId?: string | null;
 }
 
 @Injectable()
@@ -50,6 +51,7 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       role: user.role,
+      organizationId: user.organizationId,
     };
 
     return this.jwtService.signAsync(payload);

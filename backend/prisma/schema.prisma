@@ -211,13 +211,19 @@ model User {
   realName              String                 @map("real_name")
   role                  UserRole               @default(EMPLOYEE)
   status                UserStatus             @default(ACTIVE)
+  organizationId        String?                @map("organization_id")
   departmentId          String?                @map("department_id")
   phone                 String?
   email                 String?
   createdAt             DateTime               @default(now()) @map("created_at")
   updatedAt             DateTime               @updatedAt @map("updated_at")
   deletedAt             DateTime?              @map("deleted_at")
+  organization          Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   department            Department?            @relation(fields: [departmentId], references: [id])
+  organizationMemberships OrganizationMember[]
+  roleBindings          UserRoleBinding[]
+  dataScopes            UserDataScope[]
+  sessions              AuthSession[]
   createdTags           Tag[]                  @relation("TagCreatedBy")
   createdDocuments      Document[]             @relation("DocumentCreatedBy")
   uploadedVersions      DocumentVersion[]      @relation("VersionUploadedBy")
@@ -254,6 +260,122 @@ model User {
   businessActivities    BusinessMatterActivity[]
 
   @@map("users")
+  @@index([organizationId])
+}
+
+model Organization {
+  id          String                @id @default(uuid())
+  name        String
+  code        String                @unique
+  enabled     Boolean               @default(true)
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  deletedAt   DateTime?             @map("deleted_at")
+  users       User[]
+  memberships OrganizationMember[]
+  roleBindings UserRoleBinding[]
+  dataScopes  UserDataScope[]
+
+  @@index([enabled])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  isPrimary      Boolean      @default(true) @map("is_primary")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  description String?
+  builtIn     Boolean          @default(false) @map("built_in")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  bindings    UserRoleBinding[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  module      String
+  description String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  roleLinks   RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model UserRoleBinding {
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  roleId         String       @map("role_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_role_bindings")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserDataScope {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  scopeType      String       @map("scope_type")
+  scopeId        String       @map("scope_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, scopeType, scopeId])
+  @@index([userId, scopeType])
+  @@map("user_data_scopes")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  refreshTokenHash  String    @unique @map("refresh_token_hash")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  userAgent         String?   @map("user_agent")
+  ip                String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
 }
 
 model Department {
