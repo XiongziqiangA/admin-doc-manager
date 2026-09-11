@@ -2095,7 +2095,7 @@ export default function App() {
               onOpenDocument={openDocumentDetail}
             />
           ) : page === "assets" ? (
-            <AssetsPage />
+            <AssetsPage currentUser={user} departments={departments} />
           ) : page === "finance" ? (
             <FinancePackagesPage
               onOpenDocument={openDocumentDetail}

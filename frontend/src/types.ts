@@ -174,6 +174,21 @@ export interface AssetOverview {
   pending: number;
 }
 
+export interface AssetPendingRecord {
+  id: string;
+  source: string;
+  rawPayload: Record<string, unknown>;
+  aiFields: Record<string, unknown> | null;
+  confidence: number | null;
+  duplicateCandidates: Array<Record<string, unknown>>;
+  status: string;
+  reviewNote: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  submittedBy?: { id: string; realName: string } | null;
+  reviewedBy?: { id: string; realName: string } | null;
+}
+
 export interface AssetListQuery {
   page: number;
   pageSize: number;

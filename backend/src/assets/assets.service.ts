@@ -381,7 +381,12 @@ export class AssetsService {
             serialNumber:
               dto.serialNumber === undefined ? undefined : dto.serialNumber?.trim() || null,
             supplier: dto.supplier,
-            purchaseDate: dto.purchaseDate ? new Date(dto.purchaseDate) : undefined,
+            purchaseDate:
+              dto.purchaseDate === undefined
+                ? undefined
+                : dto.purchaseDate
+                  ? new Date(dto.purchaseDate)
+                  : null,
             purchaseAmount: dto.purchaseAmount,
             businessMatterId: dto.businessMatterId,
             departmentId: dto.departmentId,

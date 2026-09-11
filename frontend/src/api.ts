@@ -4,10 +4,12 @@ import type {
   ApiEnvelope,
   ApiList,
   AssetListQuery,
+  AssetIdentifierRecord,
   AssetLocationRecord,
   AssetOverview,
   AssetRecord,
   AssetTypeRecord,
+  AssetPendingRecord,
   BusinessMatterDetail,
   BusinessProjectPlan,
   BusinessMatterDocumentLink,
@@ -158,6 +160,77 @@ export async function listAssetLocations(includeDisabled = false) {
     method: "GET",
     url: "/assets/locations",
     params: { includeDisabled },
+  });
+}
+
+export async function createAsset(payload: Record<string, unknown>) {
+  return request<AssetRecord>({ method: "POST", url: "/assets", data: payload });
+}
+
+export async function updateAsset(id: string, payload: Record<string, unknown>) {
+  return request<AssetRecord>({ method: "PATCH", url: `/assets/${id}`, data: payload });
+}
+
+export async function listPendingAssets(status = "pending") {
+  return request<AssetPendingRecord[]>({
+    method: "GET",
+    url: "/assets/pending",
+    params: { status },
+  });
+}
+
+export async function createPendingAsset(payload: Record<string, unknown>) {
+  return request<AssetPendingRecord>({ method: "POST", url: "/assets/pending", data: payload });
+}
+
+export async function confirmPendingAsset(id: string, payload: Record<string, unknown>) {
+  return request<AssetRecord>({ method: "POST", url: `/assets/pending/${id}/confirm`, data: payload });
+}
+
+export async function createAssetType(payload: Record<string, unknown>) {
+  return request<AssetTypeRecord>({ method: "POST", url: "/assets/types", data: payload });
+}
+
+export async function updateAssetType(id: string, payload: Record<string, unknown>) {
+  return request<AssetTypeRecord>({ method: "PATCH", url: `/assets/types/${id}`, data: payload });
+}
+
+export async function createAssetLocation(payload: Record<string, unknown>) {
+  return request<AssetLocationRecord>({ method: "POST", url: "/assets/locations", data: payload });
+}
+
+export async function updateAssetLocation(id: string, payload: Record<string, unknown>) {
+  return request<AssetLocationRecord>({ method: "PATCH", url: `/assets/locations/${id}`, data: payload });
+}
+
+export async function disableAssetLocation(id: string) {
+  return request<AssetLocationRecord>({ method: "DELETE", url: `/assets/locations/${id}` });
+}
+
+export async function createAssetIdentifier(assetId: string, payload: Record<string, unknown>) {
+  return request<AssetIdentifierRecord>({
+    method: "POST",
+    url: `/assets/${assetId}/identifiers`,
+    data: payload,
+  });
+}
+
+export async function updateAssetIdentifier(
+  assetId: string,
+  identifierId: string,
+  payload: Record<string, unknown>,
+) {
+  return request<AssetIdentifierRecord>({
+    method: "PATCH",
+    url: `/assets/${assetId}/identifiers/${identifierId}`,
+    data: payload,
+  });
+}
+
+export async function deleteAssetIdentifier(assetId: string, identifierId: string) {
+  return request<void>({
+    method: "DELETE",
+    url: `/assets/${assetId}/identifiers/${identifierId}`,
   });
 }
 

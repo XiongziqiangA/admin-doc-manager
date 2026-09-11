@@ -47,13 +47,13 @@ export class CreateAssetDto {
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  brand?: string;
+  brand?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(100)
-  model?: string;
+  model?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
@@ -65,19 +65,19 @@ export class CreateAssetDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  supplier?: string;
+  supplier?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
-  purchaseDate?: string;
+  purchaseDate?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(999999999999.99)
-  purchaseAmount?: number;
+  purchaseAmount?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -88,5 +88,5 @@ export class CreateAssetDto {
   @IsOptional()
   @IsString()
   @MaxLength(2000)
-  description?: string;
+  description?: string | null;
 }

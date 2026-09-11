@@ -254,6 +254,37 @@ describe("AssetsService", () => {
     );
   });
 
+  it("clears optional asset values when the client explicitly sends null", async () => {
+    prisma.asset.findFirst.mockResolvedValue({
+      id: "asset-1",
+      organizationId: "org-1",
+      assetTypeId: "type-1",
+      version: 1,
+      customFields: {},
+    });
+    prisma.asset.updateMany.mockResolvedValue({ count: 1 });
+    prisma.asset.findUnique.mockResolvedValue({ id: "asset-1", version: 2 });
+
+    await service.update(admin, "asset-1", {
+      version: 1,
+      brand: null,
+      locationId: null,
+      purchaseDate: null,
+      purchaseAmount: null,
+    });
+
+    expect(prisma.asset.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          brand: null,
+          locationId: null,
+          purchaseDate: null,
+          purchaseAmount: null,
+        }),
+      }),
+    );
+  });
+
   it("does not allow a formal asset to be physically deleted", async () => {
     prisma.asset.findFirst.mockResolvedValue({ id: "asset-1", organizationId: "org-1" });
 
