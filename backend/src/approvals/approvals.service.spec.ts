@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from "@nestjs/common";
 import {
   ApprovalBusinessType,
   ApprovalStatus,
+  AssetBorrowStatus,
   AssetReservationStatus,
   UserRole,
   UserStatus,
@@ -48,7 +49,7 @@ describe("ApprovalsService", () => {
     approval: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     approvalAction: { create: vi.fn() },
     assetReservation: { findFirst: vi.fn(), update: vi.fn() },
-    assetBorrowRecord: { findFirst: vi.fn() },
+    assetBorrowRecord: { findFirst: vi.fn(), update: vi.fn() },
     asset: { findFirst: vi.fn(), updateMany: vi.fn() },
     assetEvent: { create: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -118,6 +119,36 @@ describe("ApprovalsService", () => {
       data: { status: AssetReservationStatus.REJECTED },
     }));
     expect(prisma.asset.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("approves a borrow request through the same approval state machine", async () => {
+    const borrowApproval = {
+      ...pendingApproval,
+      businessType: ApprovalBusinessType.ASSET_BORROW,
+      businessId: "borrow-1",
+      reservation: null,
+      borrow: {
+        id: "borrow-1",
+        assetId: "asset-1",
+        reservationId: null,
+        status: AssetBorrowStatus.REQUESTED,
+        borrowStart: new Date("2026-09-20T01:00:00.000Z"),
+        borrowEnd: new Date("2026-09-20T03:00:00.000Z"),
+        asset: pendingApproval.reservation.asset,
+      },
+    };
+    prisma.approval.findFirst.mockResolvedValue(borrowApproval);
+    prisma.assetBorrowRecord.update.mockResolvedValue({ ...borrowApproval.borrow, status: AssetBorrowStatus.APPROVED });
+    const service = new ApprovalsService(prisma as never, authorization as never);
+
+    await service.approve(admin, "approval-1", { comment: "同意借用" });
+
+    expect(prisma.assetBorrowRecord.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { status: AssetBorrowStatus.APPROVED },
+    }));
+    expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resourceStatus: "reserved", version: { increment: 1 } },
+    }));
   });
 
   it("returns an already approved record without writing duplicate actions", async () => {

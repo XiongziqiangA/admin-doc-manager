@@ -30,7 +30,7 @@ const APPROVAL_INCLUDE = {
     },
   },
   borrow: {
-    include: { asset: { select: { id: true, assetCode: true, name: true, resourceStatus: true } } },
+    include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
   },
   transfer: {
     include: { asset: { select: { id: true, assetCode: true, name: true, resourceStatus: true } } },
@@ -147,6 +147,62 @@ export class ApprovalsService {
     approval: Prisma.ApprovalGetPayload<{ include: typeof APPROVAL_INCLUDE }>,
     action: ApprovalActionType,
   ) {
+    if (approval.businessType === ApprovalBusinessType.ASSET_BORROW && approval.borrow) {
+      const borrow = approval.borrow;
+      if (borrow.status !== AssetBorrowStatus.REQUESTED) {
+        throw new ConflictException("借用申请状态已变化，请刷新后重试");
+      }
+      if (action === ApprovalActionType.REJECT) {
+        await tx.assetBorrowRecord.update({
+          where: { id: borrow.id },
+          data: { status: AssetBorrowStatus.REJECTED },
+        });
+        return { assetId: borrow.assetId, eventType: "borrow_rejected", summary: "资产借用申请已驳回" };
+      }
+
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "assets" WHERE "id" = ${borrow.assetId} AND "organization_id" = ${approval.organizationId} FOR UPDATE`);
+      const asset = await tx.asset.findFirst({
+        where: { id: borrow.assetId, organizationId: approval.organizationId, archivedAt: null },
+      });
+      if (!asset) throw new NotFoundException("借用关联的资产不存在");
+      if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending"].includes(asset.resourceStatus)) {
+        throw new ConflictException("资产当前不可借用");
+      }
+      const [reservationConflict, borrowConflict] = await Promise.all([
+        tx.assetReservation.findFirst({
+          where: {
+            assetId: borrow.assetId,
+            ...(borrow.reservationId ? { id: { not: borrow.reservationId } } : {}),
+            status: { in: [AssetReservationStatus.PENDING, AssetReservationStatus.APPROVED, AssetReservationStatus.ACTIVE] },
+            startAt: { lt: borrow.borrowEnd },
+            endAt: { gt: borrow.borrowStart },
+          },
+          select: { id: true },
+        }),
+        tx.assetBorrowRecord.findFirst({
+          where: {
+            assetId: borrow.assetId,
+            id: { not: borrow.id },
+            status: { in: [AssetBorrowStatus.REQUESTED, AssetBorrowStatus.APPROVED, AssetBorrowStatus.ACTIVE, AssetBorrowStatus.RETURN_PENDING] },
+            borrowStart: { lt: borrow.borrowEnd },
+            borrowEnd: { gt: borrow.borrowStart },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (reservationConflict || borrowConflict) throw new ConflictException("资产在所选时间段已有安排");
+      const assetUpdated = await tx.asset.updateMany({
+        where: { id: asset.id, organizationId: approval.organizationId, version: asset.version, resourceStatus: { in: ["available", "reserved"] } },
+        data: { resourceStatus: "reserved", version: { increment: 1 } },
+      });
+      if (!assetUpdated.count) throw new ConflictException("资产状态已变化，请刷新后重试");
+      await tx.assetBorrowRecord.update({
+        where: { id: borrow.id },
+        data: { status: AssetBorrowStatus.APPROVED },
+      });
+      return { assetId: borrow.assetId, eventType: "borrow_approved", summary: "资产借用申请已通过" };
+    }
+
     if (approval.businessType !== ApprovalBusinessType.ASSET_RESERVATION || !approval.reservation) {
       throw new ConflictException("该审批业务尚未接入处理流程");
     }
