@@ -218,6 +218,243 @@ body {
   border-radius: 8px;
 }
 
+.global-search {
+  width: min(520px, 46vw);
+  min-width: 220px;
+  margin: 0 24px;
+}
+
+.workspace-header {
+  align-items: center;
+}
+
+.workspace-updated {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.workspace-updated .ant-spin {
+  line-height: 1;
+}
+
+.workspace-metric {
+  display: flex;
+  min-width: 0;
+  min-height: 112px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.workspace-metric-icon {
+  flex: 0 0 auto;
+  padding-top: 2px;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.workspace-metric-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-metric-content .ant-typography {
+  min-width: 0;
+  margin: 0 !important;
+}
+
+.workspace-metric-content .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.workspace-section {
+  min-width: 0;
+}
+
+.workspace-list .ant-list-item {
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.workspace-list-button,
+.global-search-result-button {
+  display: flex;
+  min-width: 0;
+  height: auto;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  overflow: hidden;
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+}
+
+.workspace-list-button:hover,
+.global-search-result-button:hover {
+  color: #2d6cdf;
+}
+
+.workspace-list-icon,
+.global-search-result-icon {
+  flex: 0 0 auto;
+  padding-top: 3px;
+  color: #2d6cdf;
+}
+
+.workspace-list-icon-matter {
+  color: #d88424;
+}
+
+.workspace-list-icon-asset {
+  color: #1b9b78;
+}
+
+.workspace-list-main,
+.global-search-result-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.workspace-list-main .ant-typography,
+.global-search-result-main .ant-typography {
+  display: block;
+  max-width: 100%;
+  margin: 0 !important;
+}
+
+.workspace-list-meta {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.workspace-attention-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-attention-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid #eef1f5;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-attention-item:first-child {
+  border-top: 0;
+}
+
+.workspace-attention-item:hover .workspace-attention-main strong,
+.workspace-attention-item:hover .workspace-attention-arrow {
+  color: #2d6cdf;
+}
+
+.workspace-attention-icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+}
+
+.workspace-attention-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-attention-main .ant-typography {
+  margin: 0 !important;
+}
+
+.workspace-attention-main .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.workspace-attention-item > .ant-typography {
+  margin: 0 !important;
+}
+
+.workspace-attention-arrow {
+  flex: 0 0 auto;
+  color: #9aa7b4;
+}
+
+.workspace-loading {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+}
+
+.workspace-finance-band {
+  min-width: 0;
+}
+
+.workspace-finance-item {
+  min-width: 0;
+  padding: 14px 16px;
+  border-left: 3px solid #2d6cdf;
+  background: #f8fafc;
+}
+
+.workspace-finance-item + .workspace-finance-item {
+  border-left-color: #1b9b78;
+}
+
+.workspace-finance-item .ant-typography {
+  margin: 0 !important;
+}
+
+.workspace-finance-item .ant-typography-secondary {
+  font-size: 12px;
+}
+
+.global-search-section + .global-search-section {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.global-search-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.global-search-section-heading .ant-typography {
+  margin: 0 !important;
+}
+
+.global-search-section .ant-list-item {
+  min-width: 0;
+  gap: 10px;
+}
+
 .asset-page-heading {
   display: flex;
   align-items: flex-start;
@@ -1798,7 +2035,16 @@ body {
 
 @media (max-width: 768px) {
   .app-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 72px;
     padding: 0 16px;
+  }
+
+  .global-search {
+    order: 3;
+    width: calc(100% - 40px);
+    margin: 0 20px 12px;
   }
 
   .app-content {
@@ -1824,6 +2070,14 @@ body {
   .category-detail-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .workspace-header {
+    align-items: stretch;
+  }
+
+  .workspace-list-meta {
+    max-width: 42%;
   }
 
   .filter-input,

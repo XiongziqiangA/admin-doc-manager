@@ -210,6 +210,31 @@ export interface AssetOverview {
   pending: number;
 }
 
+export interface WorkspaceOverview {
+  generatedAt: string;
+  documents: { total: number; monthAdded: number };
+  assets: { total: number; active: number; available: number; borrowed: number; maintenance: number; exitPending: number };
+  matters: { total: number; inProgress: number };
+  tasks: { pending: number; overdue: number; dueSoon: number };
+  followUps: { pending: number; overdue: number; dueSoon: number };
+  contracts: { dueSoon: number };
+  approvals: { pending: number };
+  finance: { loanCount: number; loanAmount: string; reimbursementCount: number; reimbursementAmount: string };
+  recentDocuments: Array<{ id: string; title: string; documentNo: string; updatedAt: string; category: { name: string } | null; subcategory: { name: string } | null; currentVersion: { fileExt: string; fileSize: number; versionLabel: string } | null }>;
+  recentMatters: Array<{ id: string; title: string; matterNo: string; type: BusinessMatterType; status: BusinessMatterStatus; updatedAt: string; owner: { id: string; realName: string; username: string } }>;
+  recentAssets: Array<{ id: string; name: string; assetCode: string; assetStatus: AssetStatus; resourceStatus: AssetResourceStatus; updatedAt: string; location: { name: string } | null }>;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  results: {
+    documents: Array<{ id: string; title: string; documentNo: string; updatedAt: string; categoryPath: string[]; currentVersion: { fileExt: string } | null }>;
+    matters: Array<{ id: string; title: string; matterNo: string; type: BusinessMatterType; status: BusinessMatterStatus; updatedAt: string }>;
+    assets: Array<{ id: string; name: string; assetCode: string; assetStatus: AssetStatus; resourceStatus: AssetResourceStatus; updatedAt: string }>;
+  };
+  total: number;
+}
+
 export interface AssetEventRecord {
   id: string;
   organizationId: string;

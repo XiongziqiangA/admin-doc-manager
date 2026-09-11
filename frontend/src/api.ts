@@ -37,6 +37,8 @@ import type {
   BusinessResponsibilityReport,
   BusinessTaskRecord,
   BusinessWorkflowOverview,
+  GlobalSearchResponse,
+  WorkspaceOverview,
   CategoryNode,
   DepartmentRecord,
   DocumentListQuery,
@@ -155,6 +157,14 @@ export async function getAsset(id: string) {
 
 export async function getAssetOverview() {
   return request<AssetOverview>({ method: "GET", url: "/assets/overview" });
+}
+
+export async function getWorkspaceOverview() {
+  return request<WorkspaceOverview>({ method: "GET", url: "/workspace/overview" });
+}
+
+export async function globalSearch(q: string, limit = 8) {
+  return request<GlobalSearchResponse>({ method: "GET", url: "/workspace/search", params: { q, limit } });
 }
 
 export async function listAssetEvents(assetId: string, page = 1, pageSize = 20) {

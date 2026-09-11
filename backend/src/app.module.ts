@@ -19,6 +19,7 @@ import { PartnersModule } from "./partners/partners.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TagsModule } from "./tags/tags.module";
 import { UsersModule } from "./users/users.module";
+import { WorkspaceModule } from "./workspace/workspace.module";
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { UsersModule } from "./users/users.module";
     PartnersModule,
     DocumentsModule,
     FinancePackagesModule,
+    WorkspaceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

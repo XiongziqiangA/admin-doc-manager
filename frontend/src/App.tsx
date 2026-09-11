@@ -2,6 +2,8 @@ import {
   AccountBookOutlined,
   ApiOutlined,
   AppstoreOutlined,
+  ArrowRightOutlined,
+  ClockCircleOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   DownloadOutlined,
@@ -10,6 +12,7 @@ import {
   FileExcelOutlined,
   FileImageOutlined,
   FilePdfOutlined,
+  FileSearchOutlined,
   FileTextOutlined,
   FileUnknownOutlined,
   FileWordOutlined,
@@ -23,6 +26,7 @@ import {
   ReloadOutlined,
   RobotOutlined,
   SafetyCertificateOutlined,
+  SearchOutlined,
   SettingOutlined,
   SwapOutlined,
   UndoOutlined,
@@ -69,6 +73,7 @@ import {
   exportDocumentsBlob,
   formatApiError,
   findDuplicateDocuments,
+  getWorkspaceOverview,
   getDocument,
   getStoredToken,
   getStoredUser,
@@ -83,6 +88,7 @@ import {
   rebuildDocumentContentIndex,
   restoreDocument,
   searchWithAssistant,
+  globalSearch,
   setStoredAuth,
   updateCategory,
   updateDocument,
@@ -97,8 +103,10 @@ import type {
   DocumentListQuery,
   PartnerRecord,
   PublicUser,
+  GlobalSearchResponse,
   SearchAssistantResponse,
   TagRecord,
+  WorkspaceOverview,
 } from "./types";
 import { FinancePackagesPage } from "./finance-packages-page";
 import { AiSettingsPage } from "./ai-settings-page";
@@ -337,10 +345,50 @@ const text = {
   recentFiles: "\u6700\u8fd1\u6587\u4ef6",
   fileCategories: "\u6587\u4ef6\u5206\u7c7b",
   dashboardLead: "\u6587\u4ef6\u3001\u5206\u7c7b\u548c\u7248\u672c\u4fe1\u606f\u96c6\u4e2d\u5728\u8fd9\u91cc\uff0c\u4e0a\u4f20\u540e\u53ef\u7ee7\u7eed\u7f16\u8f91\u6587\u4ef6\u540d\u79f0\u4e0e\u6807\u7b7e\u3002",
+  workspaceLead: "\u4ece\u6587\u4ef6\u3001\u4e8b\u9879\u5230\u8d44\u4ea7\uff0c\u5728\u4e00\u4e2a\u5de5\u4f5c\u53f0\u91cc\u638c\u63e1\u4f01\u4e1a\u65e5\u5e38\u5de5\u4f5c\u3002",
+  workspaceLastUpdated: "\u6570\u636e\u66f4\u65b0\u4e8e",
+  workspaceLoading: "\u5de5\u4f5c\u53f0\u6570\u636e\u52a0\u8f7d\u4e2d",
+  monthAdded: "\u672c\u6708\u65b0\u589e",
+  assetsTotal: "\u8d44\u4ea7\u603b\u6570",
+  assetsActive: "\u5728\u7528\u8d44\u4ea7",
+  assetsAvailable: "\u53ef\u7528\u8d44\u4ea7",
+  assetsBorrowed: "\u5df2\u501f\u51fa",
+  assetsMaintenance: "\u7ef4\u4fee\u4e2d",
+  assetsExitPending: "\u9000\u51fa\u5f85\u5ba1\u6279",
+  mattersTotal: "\u4e8b\u9879\u603b\u6570",
+  mattersInProgress: "\u8fdb\u884c\u4e2d\u4e8b\u9879",
+  pendingTasks: "\u5f85\u529e\u4efb\u52a1",
+  overdueTasks: "\u5df2\u903e\u671f\u4efb\u52a1",
+  dueSoonTasks: "7\u5929\u5185\u5230\u671f",
+  pendingFollowUps: "\u5f85\u8ddf\u8fdb\u4e8b\u9879",
+  dueSoonFollowUps: "7\u5929\u5185\u8ddf\u8fdb",
+  dueSoonContracts: "\u5373\u5c06\u5230\u671f\u5408\u540c",
+  pendingApprovals: "\u5f85\u5904\u7406\u5ba1\u6279",
+  financeOverview: "\u501f\u6b3e\u4e0e\u62a5\u9500",
+  loanAmount: "\u501f\u6b3e\u91d1\u989d",
+  reimbursementAmount: "\u62a5\u9500\u91d1\u989d",
+  recentMatters: "\u6700\u8fd1\u4e8b\u9879",
+  recentAssets: "\u6700\u8fd1\u8d44\u4ea7",
+  noMatters: "\u6682\u65e0\u4e8b\u9879",
+  noAssets: "\u6682\u65e0\u8d44\u4ea7",
+  owner: "\u8d1f\u8d23\u4eba",
+  location: "\u4f4d\u7f6e",
+  noLocation: "\u672a\u8bbe\u7f6e\u4f4d\u7f6e",
+  globalSearchResults: "\u641c\u7d22\u7ed3\u679c",
+  globalSearchDocuments: "\u6587\u4ef6",
+  globalSearchMatters: "\u4e8b\u9879",
+  globalSearchAssets: "\u8d44\u4ea7",
+  globalSearchNoResults: "\u6ca1\u6709\u627e\u5230\u5339\u914d\u7684\u5185\u5bb9",
+  openModule: "\u6253\u5f00\u6a21\u5757",
+  workspaceRefreshHint: "\u91cd\u65b0\u52a0\u8f7d\u5de5\u4f5c\u53f0\u6570\u636e",
   noDocuments: "\u8fd8\u6ca1\u6709\u4e0a\u4f20\u6587\u4ef6",
   noCategories: "\u6682\u65e0\u5206\u7c7b",
   categoryLoading: "\u5206\u7c7b\u52a0\u8f7d\u4e2d\u6216\u6682\u65f6\u4e3a\u7a7a",
   fileCenterLead: "\u6d4f\u89c8\u3001\u641c\u7d22\u548c\u4e0b\u8f7d\u4f01\u4e1a\u884c\u653f\u8d44\u6599\u3002",
+  globalSearchPlaceholder: "搜索文件、事项、资产或编号",
+  globalSearchEmpty: "请输入要搜索的内容",
+  globalSearchFailed: "全局搜索失败",
+  loadWorkspaceFailed: "工作台数据加载失败",
   recycleLead: "\u5df2\u5220\u9664\u7684\u6587\u4ef6\u4f1a\u5148\u4fdd\u7559\u5728\u8fd9\u91cc\uff0c\u53ef\u6062\u590d\uff1b\u5f7b\u5e95\u5220\u9664\u540e\u4f1a\u540c\u6b65\u6e05\u7406\u5b58\u50a8\u6587\u4ef6\u3002",
   searchPlaceholder: "\u8f93\u5165\u90e8\u5206\u6587\u4ef6\u540d\u3001\u7f16\u53f7\u3001\u6807\u7b7e\u6216\u5206\u7c7b",
   allCategories: "\u5168\u90e8\u5206\u7c7b",
@@ -902,6 +950,12 @@ export default function App() {
   const [selectedTagId, setSelectedTagId] = useState<string | undefined>();
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | undefined>();
   const [documentTotalCount, setDocumentTotalCount] = useState(0);
+  const [workspaceOverview, setWorkspaceOverview] = useState<WorkspaceOverview | null>(null);
+  const [workspaceOverviewLoading, setWorkspaceOverviewLoading] = useState(false);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [globalSearchResult, setGlobalSearchResult] = useState<GlobalSearchResponse | null>(null);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
   const [documentSearchDocuments, setDocumentSearchDocuments] = useState<DocumentRecord[]>([]);
   const [documentSearchLoading, setDocumentSearchLoading] = useState(false);
   const [documentSearchTotal, setDocumentSearchTotal] = useState(0);
@@ -1024,6 +1078,7 @@ export default function App() {
     setLoading(true);
     try {
       const currentUser = getStoredUser();
+      setWorkspaceOverviewLoading(true);
       const results = await Promise.allSettled([
         fetchAllDocuments(false, { sortBy: "updatedAt", sortOrder: "desc" }),
         currentUser?.role === "ADMIN"
@@ -1033,9 +1088,10 @@ export default function App() {
         listPartners(),
         listTags(),
         listDepartments(),
+        getWorkspaceOverview(),
       ]);
 
-      const [documentsResult, recycleResult, categoriesResult, partnersResult, tagsResult, departmentsResult] = results;
+      const [documentsResult, recycleResult, categoriesResult, partnersResult, tagsResult, departmentsResult, workspaceResult] = results;
       if (isFulfilled(documentsResult)) {
         setDocuments(documentsResult.value);
         setDocumentTotalCount(documentsResult.value.length);
@@ -1059,9 +1115,53 @@ export default function App() {
       if (isFulfilled(departmentsResult)) {
         setDepartments(departmentsResult.value);
       }
+      if (isFulfilled(workspaceResult)) {
+        setWorkspaceOverview(workspaceResult.value);
+      } else {
+        message.error(`${text.loadWorkspaceFailed}: ${formatApiError(workspaceResult.reason)}`);
+      }
     } finally {
       setLoading(false);
+      setWorkspaceOverviewLoading(false);
     }
+  };
+
+  const runGlobalSearch = async (value = globalSearchQuery) => {
+    const query = value.trim();
+    if (!query) {
+      message.warning(text.globalSearchEmpty);
+      return;
+    }
+    setGlobalSearchQuery(query);
+    setGlobalSearchLoading(true);
+    setGlobalSearchOpen(true);
+    try {
+      setGlobalSearchResult(await globalSearch(query));
+    } catch (error) {
+      message.error(`${text.globalSearchFailed}: ${formatApiError(error)}`);
+    } finally {
+      setGlobalSearchLoading(false);
+    }
+  };
+
+  const openGlobalSearchDocument = async (documentId: string) => {
+    const document = documents.find((item) => item.id === documentId);
+    if (document) {
+      setGlobalSearchOpen(false);
+      await openDocumentDetail(document);
+      return;
+    }
+    try {
+      setGlobalSearchOpen(false);
+      await openDocumentDetail(await getDocument(documentId));
+    } catch (error) {
+      message.error(`${text.loadDocumentFailed}: ${formatApiError(error)}`);
+    }
+  };
+
+  const openGlobalSearchModule = (nextPage: PageKey) => {
+    setGlobalSearchOpen(false);
+    setPage(nextPage);
   };
 
   const runAssistantSearch = async () => {
@@ -2042,6 +2142,16 @@ export default function App() {
             title={collapsed ? "\u5c55\u5f00\u83dc\u5355" : "\u6536\u8d77\u83dc\u5355"}
             onClick={() => setCollapsed((value) => !value)}
           />
+          <Input.Search
+            className="global-search"
+            allowClear
+            enterButton={<SearchOutlined />}
+            placeholder={text.globalSearchPlaceholder}
+            value={globalSearchQuery}
+            loading={globalSearchLoading}
+            onChange={(event) => setGlobalSearchQuery(event.target.value)}
+            onSearch={(value) => void runGlobalSearch(value)}
+          />
           <Space>
             <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void refresh()}>
               {text.refresh}
@@ -2061,8 +2171,15 @@ export default function App() {
               documents={documents}
               categories={categories}
               documentTotalCount={documentTotalCount}
+              overview={workspaceOverview}
+              overviewLoading={workspaceOverviewLoading}
               onOpenDocuments={() => setPage("documents")}
+              onOpenMatters={() => setPage("business-matters")}
+              onOpenAssets={() => setPage("assets")}
+              onOpenApprovals={() => setPage("approvals")}
+              onOpenFinance={() => setPage("finance")}
               onOpenUpload={() => setUploadOpen(true)}
+              onOpenDocument={(documentId) => openGlobalSearchDocument(documentId)}
             />
           ) : page === "documents" ? (
             <DocumentsPage
@@ -2188,6 +2305,16 @@ export default function App() {
             void openDocumentDetail(document);
           }
         }}
+      />
+      <GlobalSearchDrawer
+        open={globalSearchOpen}
+        query={globalSearchQuery}
+        result={globalSearchResult}
+        loading={globalSearchLoading}
+        onClose={() => setGlobalSearchOpen(false)}
+        onOpenDocument={(documentId) => void openGlobalSearchDocument(documentId)}
+        onOpenMatter={() => openGlobalSearchModule("business-matters")}
+        onOpenAsset={() => openGlobalSearchModule("assets")}
       />
       <Modal
         title={text.duplicateFileTitle}
@@ -2655,77 +2782,209 @@ function LoginPage({
   );
 }
 
+const matterTypeLabels: Record<string, string> = {
+  PROJECT: "项目",
+  CONTRACT: "合同",
+  REIMBURSEMENT: "报销",
+  LOAN: "借款",
+  PROCUREMENT: "采购",
+  OTHER: "其他事项",
+};
+
+const matterStatusMeta: Record<string, { label: string; color: string }> = {
+  PLANNING: { label: "筹备中", color: "blue" },
+  IN_PROGRESS: { label: "进行中", color: "processing" },
+  COMPLETED: { label: "已完成", color: "success" },
+  CANCELLED: { label: "已取消", color: "default" },
+};
+
+const assetResourceStatusMeta: Record<string, { label: string; color: string }> = {
+  available: { label: "可用", color: "blue" },
+  reserved: { label: "已预约", color: "gold" },
+  borrowed: { label: "已借出", color: "purple" },
+  transferring: { label: "调拨中", color: "cyan" },
+  unavailable: { label: "不可用", color: "red" },
+  return_pending: { label: "待确认归还", color: "orange" },
+  maintenance: { label: "维修中", color: "volcano" },
+  exit_pending: { label: "退出待审批", color: "magenta" },
+  retired: { label: "已退出", color: "default" },
+};
+
+const assetStatusLabels: Record<string, string> = {
+  active: "在用",
+  pending: "待确认",
+  unavailable: "不可用",
+  archived: "已归档",
+  scrapped: "已报废",
+  lost: "已遗失",
+  sold: "已出售",
+  transferred: "已转出",
+  donated: "已捐赠",
+};
+
+function getMatterStatusMeta(status: string) {
+  return matterStatusMeta[status] ?? { label: status, color: "default" };
+}
+
+function getAssetWorkspaceStatus(assetStatus: string, resourceStatus: string) {
+  return assetResourceStatusMeta[resourceStatus] ?? {
+    label: assetStatusLabels[assetStatus] ?? assetStatus,
+    color: "default",
+  };
+}
+
+function WorkspaceMetric({
+  title,
+  value,
+  detail,
+  icon,
+  accent,
+}: {
+  title: string;
+  value: number;
+  detail?: string;
+  icon: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <div className="workspace-metric">
+      <div className="workspace-metric-icon" style={{ color: accent }} aria-hidden="true">
+        {icon}
+      </div>
+      <div className="workspace-metric-content">
+        <Typography.Text type="secondary">{title}</Typography.Text>
+        <Typography.Title level={3}>{value}</Typography.Title>
+        {detail && <Typography.Text type="secondary">{detail}</Typography.Text>}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage({
   documents,
   categories,
   documentTotalCount,
+  overview,
+  overviewLoading,
   onOpenDocuments,
+  onOpenMatters,
+  onOpenAssets,
+  onOpenApprovals,
+  onOpenFinance,
   onOpenUpload,
+  onOpenDocument,
 }: {
   documents: DocumentRecord[];
   categories: CategoryNode[];
   documentTotalCount: number;
+  overview: WorkspaceOverview | null;
+  overviewLoading: boolean;
   onOpenDocuments: () => void;
+  onOpenMatters: () => void;
+  onOpenAssets: () => void;
+  onOpenApprovals: () => void;
+  onOpenFinance: () => void;
   onOpenUpload: () => void;
+  onOpenDocument: (documentId: string) => Promise<void>;
 }) {
+  type WorkspaceRecentDocument = WorkspaceOverview["recentDocuments"][number];
+  const recentDocuments: WorkspaceRecentDocument[] = overview
+    ? overview.recentDocuments
+    : documents.slice(0, 6).map((item) => ({
+        id: item.id,
+        title: item.title,
+        documentNo: item.documentNo,
+        updatedAt: item.updatedAt,
+        category: item.category ? { name: item.category.name } : null,
+        subcategory: item.subcategory ? { name: item.subcategory.name } : null,
+        currentVersion: item.currentVersion
+          ? { fileExt: item.currentVersion.fileExt, fileSize: item.currentVersion.fileSize, versionLabel: item.currentVersion.versionLabel }
+          : null,
+      }));
+  const latestDocumentDate = recentDocuments[0]?.updatedAt;
+  const documentCount = overview?.documents.total ?? documentTotalCount;
+  const monthAdded = overview?.documents.monthAdded ?? documents.filter((item) => isCurrentMonth(item.createdAt)).length;
+  const categoryCount = categories.length;
+
+  const attentionItems = overview
+    ? [
+        { label: text.pendingTasks, value: overview.tasks.pending, detail: `${overview.tasks.overdue} ${text.overdueTasks}`, icon: <FileSearchOutlined />, color: overview.tasks.overdue ? "#d4380d" : "#2d6cdf", onClick: onOpenMatters },
+        { label: text.pendingFollowUps, value: overview.followUps.pending, detail: `${overview.followUps.dueSoon} ${text.dueSoonFollowUps}`, icon: <ClockCircleOutlined />, color: "#d48806", onClick: onOpenMatters },
+        { label: text.dueSoonContracts, value: overview.contracts.dueSoon, detail: text.openModule, icon: <FileTextOutlined />, color: "#531dab", onClick: onOpenMatters },
+        { label: text.pendingApprovals, value: overview.approvals.pending, detail: text.openModule, icon: <SafetyCertificateOutlined />, color: "#08979c", onClick: onOpenApprovals },
+      ]
+    : [];
+
   return (
-    <div className="page-stack">
-      <section className="page-band page-band-header">
+    <div className="page-stack workspace-page">
+      <section className="page-band page-band-header workspace-header">
         <div>
           <Typography.Title level={2} className="page-title">
             {text.dashboard}
           </Typography.Title>
-          <Typography.Paragraph className="page-lead">{text.dashboardLead}</Typography.Paragraph>
+          <Typography.Paragraph className="page-lead">{text.workspaceLead}</Typography.Paragraph>
+          <Typography.Text type="secondary" className="workspace-updated">
+            {overviewLoading ? <Spin size="small" /> : <ReloadOutlined />}
+            {overview ? `${text.workspaceLastUpdated} ${formatDate(overview.generatedAt)}` : text.workspaceLoading}
+          </Typography.Text>
         </div>
-        <Space>
+        <Space wrap>
           <Button onClick={onOpenDocuments}>{text.viewFiles}</Button>
           <Button type="primary" icon={<UploadOutlined />} onClick={onOpenUpload}>
             {text.uploadFile}
           </Button>
         </Space>
       </section>
+
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={8}>
-          <div className="metric">
-            <Statistic title={text.totalFiles} value={documentTotalCount} suffix={text.pieces} />
-          </div>
+        <Col xs={24} sm={12} xl={6}>
+          <WorkspaceMetric title={text.totalFiles} value={documentCount} detail={`+${monthAdded} ${text.monthAdded}`} icon={<FileTextOutlined />} accent="#2d6cdf" />
         </Col>
-        <Col xs={24} sm={8}>
-          <div className="metric">
-            <Statistic title={text.primaryCategories} value={categories.length} suffix={text.items} />
-          </div>
+        <Col xs={24} sm={12} xl={6}>
+          <WorkspaceMetric title={text.assetsTotal} value={overview?.assets.total ?? 0} detail={`${overview?.assets.active ?? 0} ${text.assetsActive}`} icon={<DatabaseOutlined />} accent="#1b9b78" />
         </Col>
-        <Col xs={24} sm={8}>
-          <div className="metric">
-            <Statistic
-              title={text.recentUpdate}
-              value={documents.length ? formatDate(documents[0].updatedAt) : text.none}
-              valueStyle={{ fontSize: 18 }}
-            />
-          </div>
+        <Col xs={24} sm={12} xl={6}>
+          <WorkspaceMetric title={text.mattersTotal} value={overview?.matters.total ?? 0} detail={`${overview?.matters.inProgress ?? 0} ${text.mattersInProgress}`} icon={<FolderOpenOutlined />} accent="#d88424" />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <WorkspaceMetric title={text.primaryCategories} value={categoryCount} detail={latestDocumentDate ? `${text.recentUpdate} ${formatDate(latestDocumentDate)}` : text.none} icon={<AppstoreOutlined />} accent="#531dab" />
         </Col>
       </Row>
+
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={14}>
-          <section className="page-band">
+          <section className="page-band workspace-section">
             <div className="section-toolbar">
-              <Typography.Title level={4} className="section-title">
-                {text.recentFiles}
-              </Typography.Title>
+              <div>
+                <Typography.Title level={4} className="section-title">
+                  {text.recentFiles}
+                </Typography.Title>
+                <Typography.Text type="secondary">{text.fileCenterLead}</Typography.Text>
+              </div>
               <Button type="link" onClick={onOpenDocuments}>
                 {text.viewAll}
               </Button>
             </div>
-            {documents.length ? (
+            {recentDocuments.length ? (
               <List
-                dataSource={documents.slice(0, 6)}
+                className="workspace-list"
+                dataSource={recentDocuments}
                 renderItem={(item) => (
                   <List.Item>
-                    <List.Item.Meta
-                      title={item.title}
-                      description={`${item.category?.name ?? text.noCategories} · ${formatDate(item.updatedAt)}`}
-                    />
-                    <Typography.Text type="secondary">{formatSize(item.currentVersion?.fileSize)}</Typography.Text>
+                    <Button type="text" className="workspace-list-button" onClick={() => void onOpenDocument(item.id)}>
+                      <span className="workspace-list-icon" aria-hidden="true"><FileTextOutlined /></span>
+                      <span className="workspace-list-main">
+                        <Typography.Text strong ellipsis={{ tooltip: item.title }}>{item.title}</Typography.Text>
+                        <Typography.Text type="secondary" ellipsis>
+                          {[item.category?.name, item.subcategory?.name].filter(Boolean).join(" / ") || text.noCategories}
+                          {` · ${formatDate(item.updatedAt)}`}
+                        </Typography.Text>
+                      </span>
+                    </Button>
+                    <Space size={8} className="workspace-list-meta">
+                      {item.currentVersion?.fileExt && <Tag>{item.currentVersion.fileExt.toUpperCase()}</Tag>}
+                      <Typography.Text type="secondary">{formatSize(item.currentVersion?.fileSize)}</Typography.Text>
+                    </Space>
                   </List.Item>
                 )}
               />
@@ -2735,32 +2994,251 @@ function DashboardPage({
           </section>
         </Col>
         <Col xs={24} lg={10}>
-          <section className="page-band">
-            <Typography.Title level={4} className="section-title">
-              {text.fileCategories}
-            </Typography.Title>
-            {categories.length ? (
-              <List
-                dataSource={categories}
-                renderItem={(item) => (
-                  <List.Item>
-                    <Space>
-                      <FolderOpenOutlined />
-                      <span>{item.name}</span>
-                    </Space>
-                    <Typography.Text type="secondary">
-                      {item.children?.length ?? 0} {text.items}
-                    </Typography.Text>
-                  </List.Item>
-                )}
-              />
+          <section className="page-band workspace-section">
+            <div className="section-toolbar">
+              <div>
+                <Typography.Title level={4} className="section-title">{text.pendingApprovals}</Typography.Title>
+                <Typography.Text type="secondary">{text.workspaceRefreshHint}</Typography.Text>
+              </div>
+              <Button type="link" onClick={onOpenApprovals}>{text.viewAll}</Button>
+            </div>
+            {overviewLoading && !overview ? (
+              <div className="workspace-loading"><Spin /></div>
+            ) : attentionItems.length ? (
+              <div className="workspace-attention-list">
+                {attentionItems.map((item) => (
+                  <button type="button" className="workspace-attention-item" key={item.label} onClick={item.onClick}>
+                    <span className="workspace-attention-icon" style={{ color: item.color }} aria-hidden="true">{item.icon}</span>
+                    <span className="workspace-attention-main">
+                      <Typography.Text strong>{item.label}</Typography.Text>
+                      <Typography.Text type="secondary">{item.detail}</Typography.Text>
+                    </span>
+                    <Typography.Title level={4}>{item.value}</Typography.Title>
+                    <ArrowRightOutlined className="workspace-attention-arrow" />
+                  </button>
+                ))}
+              </div>
             ) : (
-              <Empty description={text.categoryLoading} />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text.none} />
             )}
           </section>
         </Col>
       </Row>
+
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <section className="page-band workspace-section">
+            <div className="section-toolbar">
+              <Typography.Title level={4} className="section-title">{text.recentMatters}</Typography.Title>
+              <Button type="link" onClick={onOpenMatters}>{text.viewAll}</Button>
+            </div>
+            {overview?.recentMatters.length ? (
+              <List
+                className="workspace-list"
+                dataSource={overview.recentMatters}
+                renderItem={(item) => {
+                  const status = getMatterStatusMeta(item.status);
+                  return (
+                    <List.Item>
+                      <button type="button" className="workspace-list-button" onClick={onOpenMatters}>
+                        <span className="workspace-list-icon workspace-list-icon-matter" aria-hidden="true"><FolderOpenOutlined /></span>
+                        <span className="workspace-list-main">
+                          <Typography.Text strong ellipsis={{ tooltip: item.title }}>{item.title}</Typography.Text>
+                          <Typography.Text type="secondary" ellipsis>{item.matterNo} · {text.owner}：{item.owner.realName || item.owner.username}</Typography.Text>
+                        </span>
+                      </button>
+                      <Tag color={status.color}>{status.label}</Tag>
+                    </List.Item>
+                  );
+                }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text.noMatters} />
+            )}
+          </section>
+        </Col>
+        <Col xs={24} lg={12}>
+          <section className="page-band workspace-section">
+            <div className="section-toolbar">
+              <Typography.Title level={4} className="section-title">{text.recentAssets}</Typography.Title>
+              <Button type="link" onClick={onOpenAssets}>{text.viewAll}</Button>
+            </div>
+            {overview?.recentAssets.length ? (
+              <List
+                className="workspace-list"
+                dataSource={overview.recentAssets}
+                renderItem={(item) => {
+                  const status = getAssetWorkspaceStatus(item.assetStatus, item.resourceStatus);
+                  return (
+                    <List.Item>
+                      <button type="button" className="workspace-list-button" onClick={onOpenAssets}>
+                        <span className="workspace-list-icon workspace-list-icon-asset" aria-hidden="true"><DatabaseOutlined /></span>
+                        <span className="workspace-list-main">
+                          <Typography.Text strong ellipsis={{ tooltip: item.name }}>{item.name}</Typography.Text>
+                          <Typography.Text type="secondary" ellipsis>{item.assetCode} · {item.location?.name ?? text.noLocation}</Typography.Text>
+                        </span>
+                      </button>
+                      <Tag color={status.color}>{status.label}</Tag>
+                    </List.Item>
+                  );
+                }}
+              />
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text.noAssets} />
+            )}
+          </section>
+        </Col>
+      </Row>
+
+      <section className="page-band workspace-finance-band">
+        <div className="section-toolbar">
+          <div>
+            <Typography.Title level={4} className="section-title">{text.financeOverview}</Typography.Title>
+            <Typography.Text type="secondary">{text.financePackages}</Typography.Text>
+          </div>
+          <Button type="link" onClick={onOpenFinance}>{text.viewAll}</Button>
+        </div>
+        <Row gutter={[24, 16]}>
+          <Col xs={24} sm={12}>
+            <div className="workspace-finance-item">
+              <Typography.Text type="secondary">{text.loanAmount}</Typography.Text>
+              <Typography.Title level={3}>¥ {overview?.finance.loanAmount ?? "0"}</Typography.Title>
+              <Typography.Text type="secondary">{overview?.finance.loanCount ?? 0} {text.pieces}</Typography.Text>
+            </div>
+          </Col>
+          <Col xs={24} sm={12}>
+            <div className="workspace-finance-item">
+              <Typography.Text type="secondary">{text.reimbursementAmount}</Typography.Text>
+              <Typography.Title level={3}>¥ {overview?.finance.reimbursementAmount ?? "0"}</Typography.Title>
+              <Typography.Text type="secondary">{overview?.finance.reimbursementCount ?? 0} {text.pieces}</Typography.Text>
+            </div>
+          </Col>
+        </Row>
+      </section>
     </div>
+  );
+}
+
+function GlobalSearchDrawer({
+  open,
+  query,
+  result,
+  loading,
+  onClose,
+  onOpenDocument,
+  onOpenMatter,
+  onOpenAsset,
+}: {
+  open: boolean;
+  query: string;
+  result: GlobalSearchResponse | null;
+  loading: boolean;
+  onClose: () => void;
+  onOpenDocument: (documentId: string) => void;
+  onOpenMatter: (matterId: string) => void;
+  onOpenAsset: (assetId: string) => void;
+}) {
+  const documents = result?.results.documents ?? [];
+  const matters = result?.results.matters ?? [];
+  const assets = result?.results.assets ?? [];
+  const hasResults = documents.length + matters.length + assets.length > 0;
+
+  return (
+    <Drawer
+      title={`${text.globalSearchResults}${query ? `：${query}` : ""}`}
+      width={640}
+      open={open}
+      onClose={onClose}
+      destroyOnHidden
+    >
+      <Spin spinning={loading} tip={text.workspaceLoading}>
+        {!result ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={text.globalSearchNoResults} />
+        ) : !hasResults ? (
+          <Empty description={text.globalSearchNoResults} />
+        ) : (
+          <div className="global-search-results">
+            {documents.length > 0 && (
+              <section className="global-search-section">
+                <div className="global-search-section-heading">
+                  <Typography.Title level={5}>{text.globalSearchDocuments}</Typography.Title>
+                  <Tag color="blue">{documents.length}</Tag>
+                </div>
+                <List
+                  dataSource={documents}
+                  renderItem={(item) => (
+                    <List.Item>
+                      <Button type="text" className="global-search-result-button" onClick={() => onOpenDocument(item.id)}>
+                        <FileTextOutlined className="global-search-result-icon" />
+                        <span className="global-search-result-main">
+                          <Typography.Text strong ellipsis={{ tooltip: item.title }}>{item.title}</Typography.Text>
+                          <Typography.Text type="secondary" ellipsis>
+                            {item.documentNo} · {item.categoryPath.join(" / ") || text.noCategories} · {formatDate(item.updatedAt)}
+                          </Typography.Text>
+                        </span>
+                      </Button>
+                      {item.currentVersion?.fileExt && <Tag>{item.currentVersion.fileExt.toUpperCase()}</Tag>}
+                    </List.Item>
+                  )}
+                />
+              </section>
+            )}
+            {matters.length > 0 && (
+              <section className="global-search-section">
+                <div className="global-search-section-heading">
+                  <Typography.Title level={5}>{text.globalSearchMatters}</Typography.Title>
+                  <Tag color="orange">{matters.length}</Tag>
+                </div>
+                <List
+                  dataSource={matters}
+                  renderItem={(item) => {
+                    const status = getMatterStatusMeta(item.status);
+                    return (
+                      <List.Item>
+                        <Button type="text" className="global-search-result-button" onClick={() => onOpenMatter(item.id)}>
+                          <FolderOpenOutlined className="global-search-result-icon" />
+                          <span className="global-search-result-main">
+                            <Typography.Text strong ellipsis={{ tooltip: item.title }}>{item.title}</Typography.Text>
+                            <Typography.Text type="secondary" ellipsis>{item.matterNo} · {matterTypeLabels[item.type] ?? item.type} · {formatDate(item.updatedAt)}</Typography.Text>
+                          </span>
+                        </Button>
+                        <Tag color={status.color}>{status.label}</Tag>
+                      </List.Item>
+                    );
+                  }}
+                />
+              </section>
+            )}
+            {assets.length > 0 && (
+              <section className="global-search-section">
+                <div className="global-search-section-heading">
+                  <Typography.Title level={5}>{text.globalSearchAssets}</Typography.Title>
+                  <Tag color="green">{assets.length}</Tag>
+                </div>
+                <List
+                  dataSource={assets}
+                  renderItem={(item) => {
+                    const status = getAssetWorkspaceStatus(item.assetStatus, item.resourceStatus);
+                    return (
+                      <List.Item>
+                        <Button type="text" className="global-search-result-button" onClick={() => onOpenAsset(item.id)}>
+                          <DatabaseOutlined className="global-search-result-icon" />
+                          <span className="global-search-result-main">
+                            <Typography.Text strong ellipsis={{ tooltip: item.name }}>{item.name}</Typography.Text>
+                            <Typography.Text type="secondary" ellipsis>{item.assetCode} · {formatDate(item.updatedAt)}</Typography.Text>
+                          </span>
+                        </Button>
+                        <Tag color={status.color}>{status.label}</Tag>
+                      </List.Item>
+                    );
+                  }}
+                />
+              </section>
+            )}
+          </div>
+        )}
+      </Spin>
+    </Drawer>
   );
 }
 
