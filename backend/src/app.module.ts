@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
+import { ApprovalsModule } from "./approvals/approvals.module";
 import { AuthModule } from "./auth/auth.module";
 import { AuthorizationModule } from "./authorization/authorization.module";
 import { AssetCirculationModule } from "./asset-circulation/asset-circulation.module";
@@ -26,6 +27,7 @@ import { UsersModule } from "./users/users.module";
     }),
     PrismaModule,
     AuthModule,
+    ApprovalsModule,
     AuthorizationModule,
     AssetCirculationModule,
     AssetsModule,
