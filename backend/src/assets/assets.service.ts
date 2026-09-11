@@ -224,6 +224,7 @@ export class AssetsService {
     const keyword = query.keyword?.trim();
     const where: Prisma.AssetWhereInput = {
       organizationId,
+      archivedAt: null,
       ...(query.assetTypeId ? { assetTypeId: query.assetTypeId } : {}),
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
       ...(query.locationId ? { locationId: query.locationId } : {}),
@@ -431,6 +432,7 @@ export class AssetsService {
     const organizationId = this.organizationId(user);
     const current = await this.prisma.asset.findFirst({ where: { id, organizationId } });
     if (!current) throw new NotFoundException("资产不存在");
+    if (current.archivedAt) throw new ConflictException("已退出的资产为只读历史档案，不能继续修改");
     if (current.version !== dto.version) throw new ConflictException("资产已被其他用户更新，请刷新后重试");
     const type = await this.getEnabledType(
       this.prisma,
@@ -443,7 +445,7 @@ export class AssetsService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const updated = await tx.asset.updateMany({
-          where: { id, organizationId, version: dto.version },
+          where: { id, organizationId, version: dto.version, archivedAt: null },
           data: {
             assetTypeId: type.id,
             assetCode: dto.assetCode?.trim(),
@@ -659,10 +661,10 @@ export class AssetsService {
   private async assertAssetInOrganization(user: PublicUser, assetId: string) {
     const organizationId = this.organizationId(user);
     const asset = await this.prisma.asset.findFirst({
-      where: { id: assetId, organizationId },
+      where: { id: assetId, organizationId, archivedAt: null },
       select: { id: true },
     });
-    if (!asset) throw new NotFoundException("资产不存在");
+    if (!asset) throw new NotFoundException("资产不存在或已退出台账");
     return asset;
   }
 

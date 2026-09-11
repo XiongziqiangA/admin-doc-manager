@@ -4,6 +4,7 @@ import {
   ApprovalBusinessType,
   ApprovalStatus,
   AssetBorrowStatus,
+  AssetExitStatus,
   AssetReservationStatus,
   AssetTransferStatus,
   Prisma,
@@ -14,6 +15,7 @@ import { AuthorizationService } from "../authorization/authorization.service";
 import { PERMISSIONS } from "../authorization/permissions";
 import { PrismaService } from "../prisma/prisma.service";
 import { PublicUser } from "../users/user.presenter";
+import { assetStatusForExit } from "../asset-lifecycle/asset-exit-status";
 import { ListApprovalsDto } from "./dto/list-approvals.dto";
 import { ReviewApprovalDto } from "./dto/review-approval.dto";
 
@@ -34,6 +36,9 @@ const APPROVAL_INCLUDE = {
     include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
   },
   transfer: {
+    include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
+  },
+  exitRequest: {
     include: { asset: { select: { id: true, assetCode: true, name: true, version: true, assetStatus: true, resourceStatus: true } } },
   },
 } satisfies Prisma.ApprovalInclude;
@@ -148,6 +153,49 @@ export class ApprovalsService {
     approval: Prisma.ApprovalGetPayload<{ include: typeof APPROVAL_INCLUDE }>,
     action: ApprovalActionType,
   ) {
+    if (approval.businessType === ApprovalBusinessType.ASSET_EXIT && approval.exitRequest) {
+      const exitRequest = approval.exitRequest;
+      if (exitRequest.status !== AssetExitStatus.PENDING) {
+        throw new ConflictException("资产退出申请状态已变化，请刷新后重试");
+      }
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "assets" WHERE "id" = ${exitRequest.assetId} AND "organization_id" = ${approval.organizationId} FOR UPDATE`,
+      );
+      const asset = await tx.asset.findFirst({
+        where: { id: exitRequest.assetId, organizationId: approval.organizationId, archivedAt: null },
+      });
+      if (!asset) throw new NotFoundException("退出申请关联的资产不存在");
+      if (asset.resourceStatus !== "exit_pending") throw new ConflictException("资产退出状态已变化，请刷新后重试");
+      if (action === ApprovalActionType.REJECT) {
+        const restored = await tx.asset.updateMany({
+          where: { id: asset.id, organizationId: approval.organizationId, version: asset.version, resourceStatus: "exit_pending" },
+          data: { resourceStatus: exitRequest.resourceStatusBefore || "available", version: { increment: 1 } },
+        });
+        if (!restored.count) throw new ConflictException("资产状态已变化，请刷新后重试");
+        await tx.assetExitRequest.update({
+          where: { id: exitRequest.id },
+          data: { status: AssetExitStatus.REJECTED, completedAt: new Date() },
+        });
+        return { assetId: exitRequest.assetId, eventType: "asset_exit_rejected", summary: "资产退出申请已驳回" };
+      }
+      const exited = await tx.asset.updateMany({
+        where: { id: asset.id, organizationId: approval.organizationId, version: asset.version, resourceStatus: "exit_pending" },
+        data: {
+          assetStatus: assetStatusForExit(exitRequest.exitType),
+          resourceStatus: "retired",
+          archivedAt: new Date(),
+          usingUserId: null,
+          version: { increment: 1 },
+        },
+      });
+      if (!exited.count) throw new ConflictException("资产状态已变化，请刷新后重试");
+      await tx.assetExitRequest.update({
+        where: { id: exitRequest.id },
+        data: { status: AssetExitStatus.APPROVED, completedAt: new Date() },
+      });
+      return { assetId: exitRequest.assetId, eventType: "asset_exited", summary: "资产退出申请已通过并归档" };
+    }
+
     if (approval.businessType === ApprovalBusinessType.ASSET_TRANSFER && approval.transfer) {
       const transfer = approval.transfer;
       if (transfer.status !== AssetTransferStatus.PENDING) {
@@ -198,7 +246,7 @@ export class ApprovalsService {
         where: { id: borrow.assetId, organizationId: approval.organizationId, archivedAt: null },
       });
       if (!asset) throw new NotFoundException("借用关联的资产不存在");
-      if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending"].includes(asset.resourceStatus)) {
+      if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending", "maintenance", "exit_pending"].includes(asset.resourceStatus)) {
         throw new ConflictException("资产当前不可借用");
       }
       const [reservationConflict, borrowConflict] = await Promise.all([
@@ -256,7 +304,7 @@ export class ApprovalsService {
       where: { id: reservation.assetId, organizationId: approval.organizationId, archivedAt: null },
     });
     if (!asset) throw new NotFoundException("预约关联的资产不存在");
-    if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending"].includes(asset.resourceStatus)) {
+    if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending", "maintenance", "exit_pending"].includes(asset.resourceStatus)) {
       throw new ConflictException("资产当前不可预约");
     }
     const [reservationConflict, borrowConflict] = await Promise.all([

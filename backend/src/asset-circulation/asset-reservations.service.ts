@@ -109,7 +109,7 @@ export class AssetReservationsService {
             where: { id: dto.assetId, organizationId, archivedAt: null },
           });
           if (!asset) throw new NotFoundException("资产不存在");
-          if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending", "maintenance"].includes(asset.resourceStatus)) {
+          if (asset.assetStatus !== "active" || ["borrowed", "transferring", "unavailable", "return_pending", "maintenance", "exit_pending"].includes(asset.resourceStatus)) {
             throw new ConflictException("资产当前不可预约");
           }
           if (dto.businessMatterId) {

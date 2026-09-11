@@ -1061,20 +1061,21 @@ model AssetAnomaly {
 }
 
 model AssetExitRequest {
-  id             String          @id @default(uuid())
-  organizationId String          @map("organization_id")
-  assetId        String          @map("asset_id")
-  applicantId    String          @map("applicant_id")
-  approvalId     String?         @unique @map("approval_id")
-  exitType       AssetExitType   @map("exit_type")
-  reason         String
-  status         AssetExitStatus @default(PENDING)
-  createdAt      DateTime        @default(now()) @map("created_at")
-  completedAt    DateTime?       @map("completed_at")
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  asset          Asset           @relation(fields: [assetId], references: [id])
-  applicant      User            @relation("AssetExitApplicant", fields: [applicantId], references: [id])
-  approval       Approval?       @relation("ExitApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  id                   String          @id @default(uuid())
+  organizationId       String          @map("organization_id")
+  assetId              String          @map("asset_id")
+  applicantId          String          @map("applicant_id")
+  approvalId           String?         @unique @map("approval_id")
+  exitType             AssetExitType   @map("exit_type")
+  reason               String
+  status               AssetExitStatus @default(PENDING)
+  resourceStatusBefore String?         @map("resource_status_before")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  completedAt          DateTime?       @map("completed_at")
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset                Asset           @relation(fields: [assetId], references: [id])
+  applicant            User            @relation("AssetExitApplicant", fields: [applicantId], references: [id])
+  approval             Approval?       @relation("ExitApproval", fields: [approvalId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, createdAt])
   @@index([assetId, status])

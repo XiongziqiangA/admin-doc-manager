@@ -128,7 +128,7 @@ describe("AssetsService", () => {
 
     expect(prisma.asset.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ organizationId: "org-1" }),
+        where: expect.objectContaining({ organizationId: "org-1", archivedAt: null }),
         skip: 100,
         take: 100,
       }),
@@ -260,9 +260,23 @@ describe("AssetsService", () => {
     ).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.asset.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "asset-1", organizationId: "org-1", version: 2 },
+        where: { id: "asset-1", organizationId: "org-1", version: 2, archivedAt: null },
       }),
     );
+  });
+
+  it("keeps archived assets readable but rejects further edits", async () => {
+    prisma.asset.findFirst.mockResolvedValue({
+      id: "asset-1",
+      organizationId: "org-1",
+      assetTypeId: "type-1",
+      version: 4,
+      customFields: {},
+      archivedAt: new Date("2026-09-11T08:00:00.000Z"),
+    });
+
+    await expect(service.update(admin, "asset-1", { version: 4, name: "不应修改" })).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.asset.updateMany).not.toHaveBeenCalled();
   });
 
   it("clears optional asset values when the client explicitly sends null", async () => {

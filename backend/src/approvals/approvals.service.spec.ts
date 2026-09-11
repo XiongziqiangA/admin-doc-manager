@@ -3,6 +3,8 @@ import {
   ApprovalBusinessType,
   ApprovalStatus,
   AssetBorrowStatus,
+  AssetExitStatus,
+  AssetExitType,
   AssetReservationStatus,
   AssetTransferStatus,
   UserRole,
@@ -45,6 +47,7 @@ describe("ApprovalsService", () => {
     },
     borrow: null,
     transfer: null,
+    exitRequest: null,
   };
   const prisma = {
     approval: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
@@ -52,6 +55,7 @@ describe("ApprovalsService", () => {
     assetReservation: { findFirst: vi.fn(), update: vi.fn() },
     assetBorrowRecord: { findFirst: vi.fn(), update: vi.fn() },
     assetTransfer: { update: vi.fn() },
+    assetExitRequest: { update: vi.fn() },
     asset: { findFirst: vi.fn(), updateMany: vi.fn() },
     assetEvent: { create: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -177,6 +181,66 @@ describe("ApprovalsService", () => {
     }));
     expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { resourceStatus: "transferring", version: { increment: 1 } },
+    }));
+  });
+
+  it("approves an asset exit request and archives the asset as read-only history", async () => {
+    const exitApproval = {
+      ...pendingApproval,
+      businessType: ApprovalBusinessType.ASSET_EXIT,
+      businessId: "exit-1",
+      reservation: null,
+      exitRequest: {
+        id: "exit-1",
+        assetId: "asset-1",
+        exitType: AssetExitType.SCRAPPED,
+        status: AssetExitStatus.PENDING,
+        resourceStatusBefore: "available",
+        asset: { ...pendingApproval.reservation.asset, version: 4, resourceStatus: "exit_pending" },
+      },
+    };
+    prisma.approval.findFirst.mockResolvedValue(exitApproval);
+    prisma.asset.findFirst.mockResolvedValue(exitApproval.exitRequest.asset);
+    prisma.assetExitRequest.update.mockResolvedValue({ ...exitApproval.exitRequest, status: AssetExitStatus.APPROVED });
+    const service = new ApprovalsService(prisma as never, authorization as never);
+
+    await service.approve(admin, "approval-1", { comment: "同意报废" });
+
+    expect(prisma.assetExitRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: AssetExitStatus.APPROVED }),
+    }));
+    expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ assetStatus: "scrapped", resourceStatus: "retired", archivedAt: expect.any(Date) }),
+    }));
+  });
+
+  it("rejects an asset exit request and restores its previous resource state", async () => {
+    const exitApproval = {
+      ...pendingApproval,
+      businessType: ApprovalBusinessType.ASSET_EXIT,
+      businessId: "exit-1",
+      reservation: null,
+      exitRequest: {
+        id: "exit-1",
+        assetId: "asset-1",
+        exitType: AssetExitType.SCRAPPED,
+        status: AssetExitStatus.PENDING,
+        resourceStatusBefore: "reserved",
+        asset: { ...pendingApproval.reservation.asset, version: 4, resourceStatus: "exit_pending" },
+      },
+    };
+    prisma.approval.findFirst.mockResolvedValue(exitApproval);
+    prisma.asset.findFirst.mockResolvedValue(exitApproval.exitRequest.asset);
+    prisma.assetExitRequest.update.mockResolvedValue({ ...exitApproval.exitRequest, status: AssetExitStatus.REJECTED });
+    const service = new ApprovalsService(prisma as never, authorization as never);
+
+    await service.reject(admin, "approval-1", { comment: "继续使用" });
+
+    expect(prisma.asset.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { resourceStatus: "reserved", version: { increment: 1 } },
+    }));
+    expect(prisma.assetExitRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: AssetExitStatus.REJECTED }),
     }));
   });
 

@@ -89,7 +89,7 @@ export class AssetTransfersService {
       await this.lockAsset(tx, dto.assetId, organizationId);
       const asset = await tx.asset.findFirst({ where: { id: dto.assetId, organizationId, archivedAt: null } });
       if (!asset) throw new NotFoundException("资产不存在");
-      if (asset.assetStatus !== "active" || ["borrowed", "return_pending", "transferring", "unavailable", "maintenance"].includes(asset.resourceStatus)) {
+      if (asset.assetStatus !== "active" || ["borrowed", "return_pending", "transferring", "unavailable", "maintenance", "exit_pending"].includes(asset.resourceStatus)) {
         throw new ConflictException("资产当前不可调拨");
       }
       const toDepartmentId = dto.toDepartmentId === undefined ? asset.departmentId : dto.toDepartmentId;

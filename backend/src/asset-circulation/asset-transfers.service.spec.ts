@@ -124,8 +124,8 @@ describe("AssetTransfersService", () => {
     await expect(service.create(admin, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("prevents an asset under maintenance from entering transfer", async () => {
-    prisma.asset.findFirst.mockResolvedValue({ ...asset, resourceStatus: "maintenance" });
+  it.each(["maintenance", "exit_pending"])("prevents an asset in %s state from entering transfer", async (resourceStatus) => {
+    prisma.asset.findFirst.mockResolvedValue({ ...asset, resourceStatus });
     const service = new AssetTransfersService(prisma as never, authorization as never, idempotency as never);
 
     await expect(service.create(admin, "request-0001", dto)).rejects.toBeInstanceOf(ConflictException);

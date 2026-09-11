@@ -98,12 +98,12 @@ describe("AssetReservationsService", () => {
     expect(prisma.assetReservation.create).not.toHaveBeenCalled();
   });
 
-  it("rejects a reservation while the asset is under maintenance", async () => {
+  it.each(["maintenance", "exit_pending"])("rejects a reservation while the asset resource state is %s", async (resourceStatus) => {
     prisma.asset.findFirst.mockResolvedValue({
       id: "asset-1",
       organizationId: "org-1",
       assetStatus: "active",
-      resourceStatus: "maintenance",
+      resourceStatus,
       version: 1,
     });
     const service = new AssetReservationsService(prisma as never, authorization as never, idempotency as never);
