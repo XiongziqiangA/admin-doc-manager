@@ -258,6 +258,11 @@ model User {
   rejectedBusinessFinanceRecords BusinessMatterFinanceRecord[] @relation("BusinessFinanceRejectedBy")
   createdBusinessContracts BusinessMatterContract[] @relation("BusinessContractCreatedBy")
   businessActivities    BusinessMatterActivity[]
+  createdAssets         Asset[]                  @relation("AssetCreatedBy")
+  ownedAssets           Asset[]                  @relation("AssetOwner")
+  usingAssets           Asset[]                  @relation("AssetUser")
+  submittedAssets       PendingAsset[]           @relation("PendingAssetSubmittedBy")
+  reviewedAssets        PendingAsset[]           @relation("PendingAssetReviewedBy")
 
   @@map("users")
   @@index([organizationId])
@@ -275,6 +280,10 @@ model Organization {
   memberships OrganizationMember[]
   roleBindings UserRoleBinding[]
   dataScopes  UserDataScope[]
+  assetTypes  AssetType[]
+  locations   Location[]
+  assets      Asset[]
+  pendingAssets PendingAsset[]
 
   @@index([enabled])
   @@map("organizations")
@@ -391,6 +400,7 @@ model Department {
   users       User[]
   documents   Document[]
   businessMatters BusinessMatter[]
+  assets      Asset[]
 
   @@index([parentId])
   @@map("departments")
@@ -488,6 +498,7 @@ model BusinessMatter {
   financeRecords BusinessMatterFinanceRecord[]
   issues      BusinessMatterIssue[]
   activities  BusinessMatterActivity[]
+  assets      Asset[]
 
   @@index([type])
   @@index([status])
@@ -497,6 +508,132 @@ model BusinessMatter {
   @@index([partnerId])
   @@index([deletedAt])
   @@map("business_matters")
+}
+
+model AssetType {
+  id             String     @id @default(uuid())
+  organizationId String     @map("organization_id")
+  name           String
+  code           String
+  parentId       String?    @map("parent_id")
+  enabled        Boolean    @default(true)
+  fieldSchema    Json       @default("[]") @map("field_schema")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         AssetType?  @relation("AssetTypeTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       AssetType[] @relation("AssetTypeTree")
+  assets         Asset[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, enabled])
+  @@index([parentId])
+  @@map("asset_types")
+}
+
+model Location {
+  id             String      @id @default(uuid())
+  organizationId String      @map("organization_id")
+  name           String
+  code           String
+  parentId       String?     @map("parent_id")
+  enabled        Boolean     @default(true)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         Location?   @relation("LocationTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Location[]  @relation("LocationTree")
+  assets         Asset[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, enabled])
+  @@index([parentId])
+  @@map("locations")
+}
+
+model Asset {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  businessMatterId String?      @map("business_matter_id")
+  assetTypeId     String       @map("asset_type_id")
+  departmentId    String?      @map("department_id")
+  locationId      String?      @map("location_id")
+  assetCode       String       @map("asset_code")
+  name            String
+  brand           String?
+  model           String?
+  serialNumber    String?      @map("serial_number")
+  supplier        String?
+  purchaseDate    DateTime?    @map("purchase_date")
+  purchaseAmount  Decimal?     @db.Decimal(15, 2) @map("purchase_amount")
+  assetStatus     String       @default("active") @map("asset_status")
+  resourceStatus  String       @default("available") @map("resource_status")
+  ownerUserId     String?      @map("owner_user_id")
+  usingUserId     String?      @map("using_user_id")
+  customFields    Json        @default("{}") @map("custom_fields")
+  description     String?
+  source          String       @default("manual")
+  qrToken         String       @unique @map("qr_token")
+  version         Int          @default(1)
+  createdById     String       @map("created_by")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  archivedAt      DateTime?    @map("archived_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessMatter  BusinessMatter? @relation(fields: [businessMatterId], references: [id], onDelete: SetNull)
+  assetType       AssetType    @relation(fields: [assetTypeId], references: [id])
+  department      Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  location        Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  owner           User?        @relation("AssetOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  usingUser       User?        @relation("AssetUser", fields: [usingUserId], references: [id], onDelete: SetNull)
+  createdBy       User         @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  identifiers     AssetIdentifier[]
+
+  @@unique([organizationId, assetCode])
+  @@unique([organizationId, serialNumber])
+  @@index([organizationId, assetStatus, resourceStatus])
+  @@index([organizationId, updatedAt])
+  @@index([businessMatterId])
+  @@index([departmentId])
+  @@index([locationId])
+  @@map("assets")
+}
+
+model AssetIdentifier {
+  id             String   @id @default(uuid())
+  assetId        String   @map("asset_id")
+  identifierType String   @map("identifier_type")
+  value          String
+  isPrimary      Boolean  @default(false) @map("is_primary")
+  createdAt      DateTime @default(now()) @map("created_at")
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([identifierType, value])
+  @@index([assetId])
+  @@map("asset_identifiers")
+}
+
+model PendingAsset {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  submittedById  String    @map("submitted_by")
+  source         String
+  rawPayload     Json      @map("raw_payload")
+  aiFields       Json?     @map("ai_fields")
+  confidence     Float?
+  duplicateCandidates Json @default("[]") @map("duplicate_candidates")
+  status         String    @default("pending")
+  reviewNote     String?   @map("review_note")
+  reviewedById   String?   @map("reviewed_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  reviewedAt     DateTime? @map("reviewed_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submittedBy    User      @relation("PendingAssetSubmittedBy", fields: [submittedById], references: [id])
+  reviewedBy     User?     @relation("PendingAssetReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([submittedById])
+  @@map("pending_assets")
 }
 
 model BusinessMatterDocument {
