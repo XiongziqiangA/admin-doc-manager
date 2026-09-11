@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, UserStatus } from "@prisma/client";
 
 import { PasswordService } from "../auth/password.service";
@@ -14,7 +14,10 @@ export class UsersService {
     private readonly passwordService: PasswordService,
   ) {}
 
-  async create(dto: CreateUserDto): Promise<PublicUser> {
+  async create(dto: CreateUserDto, operator: PublicUser): Promise<PublicUser> {
+    if (!operator.organizationId) {
+      throw new ForbiddenException("当前账号尚未绑定企业");
+    }
     const existing = await this.prisma.user.findUnique({
       where: { username: dto.username },
     });
@@ -23,25 +26,48 @@ export class UsersService {
     }
 
     const passwordHash = await this.passwordService.hashPassword(dto.password);
-    const user = await this.prisma.user.create({
-      data: {
-        username: dto.username,
-        passwordHash,
-        realName: dto.realName,
-        role: dto.role,
-        status: dto.status ?? UserStatus.ACTIVE,
-        departmentId: dto.departmentId,
-        phone: dto.phone,
-        email: dto.email,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const role = await tx.role.findUnique({ where: { code: dto.role } });
+      if (!role) {
+        throw new ConflictException("企业角色尚未初始化，请先执行企业基础数据初始化");
+      }
+      const created = await tx.user.create({
+        data: {
+          username: dto.username,
+          passwordHash,
+          realName: dto.realName,
+          role: dto.role,
+          status: dto.status ?? UserStatus.ACTIVE,
+          organizationId: operator.organizationId,
+          departmentId: dto.departmentId,
+          phone: dto.phone,
+          email: dto.email,
+        },
+      });
+      await tx.organizationMember.create({
+        data: {
+          organizationId: operator.organizationId!,
+          userId: created.id,
+          isPrimary: true,
+        },
+      });
+      await tx.userRoleBinding.create({
+        data: {
+          organizationId: operator.organizationId!,
+          userId: created.id,
+          roleId: role.id,
+        },
+      });
+      return created;
     });
 
     return toPublicUser(user);
   }
 
-  async list(query: ListUsersDto) {
+  async list(query: ListUsersDto, operator?: PublicUser) {
     const where: Prisma.UserWhereInput = {
       deletedAt: null,
+      ...(operator?.organizationId ? { organizationId: operator.organizationId } : {}),
       role: query.role,
       status: query.status,
       OR: query.keyword
@@ -82,9 +108,9 @@ export class UsersService {
     });
   }
 
-  async findById(id: string): Promise<PublicUser> {
+  async findById(id: string, organizationId?: string | null): Promise<PublicUser> {
     const user = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(organizationId ? { organizationId } : {}) },
     });
     if (!user) {
       throw new NotFoundException("用户不存在");
@@ -93,9 +119,9 @@ export class UsersService {
     return toPublicUser(user);
   }
 
-  async updateStatus(id: string, status: UserStatus): Promise<PublicUser> {
+  async updateStatus(id: string, status: UserStatus, organizationId?: string | null): Promise<PublicUser> {
     const exists = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(organizationId ? { organizationId } : {}) },
     });
     if (!exists) {
       throw new NotFoundException("用户不存在");
