@@ -21,6 +21,7 @@ import { CreateAssetTypeDto } from "./dto/create-asset-type.dto";
 import { CreateLocationDto } from "./dto/create-location.dto";
 import { CreatePendingAssetDto } from "./dto/create-pending-asset.dto";
 import { ListAssetsDto } from "./dto/list-assets.dto";
+import { ListAssetEventsDto } from "./dto/list-asset-events.dto";
 import { UpdateAssetIdentifierDto } from "./dto/update-asset-identifier.dto";
 import { UpdateAssetDto } from "./dto/update-asset.dto";
 import { UpdateAssetTypeDto } from "./dto/update-asset-type.dto";
@@ -274,6 +275,36 @@ export class AssetsService {
     const asset = await this.prisma.asset.findFirst({ where: { id, organizationId }, include: ASSET_DETAIL_INCLUDE });
     if (!asset) throw new NotFoundException("资产不存在");
     return asset;
+  }
+
+  async listEvents(user: PublicUser, id: string, query: ListAssetEventsDto) {
+    await this.assertPermission(user, PERMISSIONS.ASSET_READ);
+    const organizationId = this.organizationId(user);
+    const asset = await this.prisma.asset.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!asset) throw new NotFoundException("资产不存在");
+    const where = { organizationId, assetId: id };
+    const [items, totalItems] = await this.prisma.$transaction([
+      this.prisma.assetEvent.findMany({
+        where,
+        include: { actor: { select: { id: true, realName: true, username: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.assetEvent.count({ where }),
+    ]);
+    return {
+      items,
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / query.pageSize),
+      },
+    };
   }
 
   async attachDocuments(user: PublicUser, assetId: string, dto: AttachAssetDocumentsDto) {

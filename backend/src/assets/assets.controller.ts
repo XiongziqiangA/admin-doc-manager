@@ -13,6 +13,7 @@ import { CreateAssetTypeDto } from "./dto/create-asset-type.dto";
 import { CreateLocationDto } from "./dto/create-location.dto";
 import { CreatePendingAssetDto } from "./dto/create-pending-asset.dto";
 import { ListAssetsDto } from "./dto/list-assets.dto";
+import { ListAssetEventsDto } from "./dto/list-asset-events.dto";
 import { UpdateAssetIdentifierDto } from "./dto/update-asset-identifier.dto";
 import { UpdateAssetDto } from "./dto/update-asset.dto";
 import { UpdateAssetTypeDto } from "./dto/update-asset-type.dto";
@@ -139,6 +140,15 @@ export class AssetsController {
   @Get(":id")
   findById(@Param("id") id: string, @CurrentUser() user: PublicUser) {
     return this.assetsService.findById(user, id);
+  }
+
+  @Get(":id/events")
+  listEvents(
+    @Param("id") id: string,
+    @Query() query: ListAssetEventsDto,
+    @CurrentUser() user: PublicUser,
+  ) {
+    return this.assetsService.listEvents(user, id, query);
   }
 
   @Patch(":id")

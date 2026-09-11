@@ -35,6 +35,10 @@ describe("AssetsService", () => {
       create: vi.fn(),
       updateMany: vi.fn(),
     },
+    assetEvent: {
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
     assetIdentifier: {
       findFirst: vi.fn(),
       create: vi.fn(),
@@ -180,6 +184,22 @@ describe("AssetsService", () => {
     expect(prisma.asset.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "asset-other", organizationId: "org-1" } }),
     );
+  });
+
+  it("returns a paginated lifecycle timeline for an asset in the current organization", async () => {
+    prisma.asset.findFirst.mockResolvedValue({ id: "asset-1" });
+    prisma.assetEvent.findMany.mockResolvedValue([{ id: "event-1", summary: "资产已归还" }]);
+    prisma.assetEvent.count.mockResolvedValue(21);
+
+    const result = await service.listEvents(admin, "asset-1", { page: 2, pageSize: 20 });
+
+    expect(prisma.assetEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: "org-1", assetId: "asset-1" },
+      skip: 20,
+      take: 20,
+      orderBy: { createdAt: "desc" },
+    }));
+    expect(result.pagination).toEqual({ page: 2, pageSize: 20, totalItems: 21, totalPages: 2 });
   });
 
   it("stops formal asset creation when the user lacks asset.create", async () => {
