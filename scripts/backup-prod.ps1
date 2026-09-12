@@ -73,6 +73,17 @@ try {
     "note=Keep .env.production in a separate secure location; this backup does not copy secrets."
   ) | Set-Content -Encoding UTF8 (Join-Path $backupDir "manifest.txt")
 
+  if (-not (Test-Path -LiteralPath (Join-Path $backupDir "database.dump"))) {
+    throw "Backup validation failed: database.dump was not created."
+  }
+  if (-not (Test-Path -LiteralPath $storageZip)) {
+    throw "Backup validation failed: storage.zip was not created."
+  }
+  $manifest = Get-Content -Raw -LiteralPath (Join-Path $backupDir "manifest.txt")
+  if ($manifest -notmatch "database=" -or $manifest -notmatch "storage_archive=storage\.zip") {
+    throw "Backup validation failed: manifest is incomplete."
+  }
+
   Write-Host "Backup created: $backupDir"
 } finally {
   Pop-Location

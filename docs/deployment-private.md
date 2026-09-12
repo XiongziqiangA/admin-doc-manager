@@ -141,6 +141,10 @@ For a repeatable isolated validation without touching the production `data` dire
 - Do not expose PostgreSQL to the LAN.
 - Do not commit `.env.production`.
 - Use strong database and JWT secrets.
+- `start-prod.ps1` rejects short database/JWT/admin secrets, the default admin username, and non-local HTTP origins before startup.
+- Production containers have memory/CPU bounds, `no-new-privileges`, and read-only root filesystems where the service does not need persistent writes; `/tmp` and Nginx runtime directories are temporary filesystems.
 - Keep Docker Desktop updated.
 - Back up both database and uploaded files.
 - Test restore regularly.
+
+For a public or company-wide server, put the frontend behind an HTTPS reverse proxy, use a certificate with automatic renewal, and set `ALLOWED_ORIGINS` to the exact HTTPS origin(s). The current Compose file intentionally exposes only the frontend port; PostgreSQL and backend remain on the internal Compose network.

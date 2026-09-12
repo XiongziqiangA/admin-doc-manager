@@ -30,6 +30,14 @@ function Wait-DockerReady {
   throw "Docker engine is not ready. Open Docker Desktop and try again."
 }
 
+function Read-EnvValue([string]$Name) {
+  $line = Get-Content -LiteralPath $envFile | Where-Object { $_ -match "^\s*$Name\s*=" } | Select-Object -First 1
+  if (-not $line) {
+    return $null
+  }
+  return (($line -split "=", 2)[1]).Trim().Trim('"').Trim("'")
+}
+
 if (-not (Test-Path $envFile)) {
   throw "Missing .env.production. Copy .env.production.example to .env.production, then replace all REPLACE_WITH_* values."
 }
@@ -37,6 +45,27 @@ if (-not (Test-Path $envFile)) {
 $envContent = Get-Content -Raw $envFile
 if ($envContent -match "REPLACE_WITH_") {
   throw ".env.production still contains REPLACE_WITH_* placeholders. Replace them before starting production."
+}
+
+$databasePassword = Read-EnvValue "POSTGRES_PASSWORD"
+$jwtSecret = Read-EnvValue "JWT_SECRET"
+$adminPassword = Read-EnvValue "ADMIN_PASSWORD"
+$adminUsername = Read-EnvValue "ADMIN_USERNAME"
+$origins = Read-EnvValue "ALLOWED_ORIGINS"
+if (-not $databasePassword -or $databasePassword.Length -lt 20) {
+  throw "POSTGRES_PASSWORD must be at least 20 characters."
+}
+if (-not $jwtSecret -or $jwtSecret.Length -lt 32) {
+  throw "JWT_SECRET must be at least 32 characters."
+}
+if (-not $adminPassword -or $adminPassword.Length -lt 12) {
+  throw "ADMIN_PASSWORD must be at least 12 characters."
+}
+if (-not $adminUsername -or $adminUsername -eq "admin") {
+  throw "Set ADMIN_USERNAME to a non-default administrator account."
+}
+if ($origins -match "http://(?!(localhost|127\\.0\\.1)(:|,|$))") {
+  throw "Non-local ALLOWED_ORIGINS must use HTTPS."
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $root "data\postgres") | Out-Null

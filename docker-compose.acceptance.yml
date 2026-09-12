@@ -3,6 +3,10 @@ services:
     image: postgres:17-alpine
     container_name: admin-docs-acceptance-postgres
     restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: "1.50"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -23,6 +27,13 @@ services:
       dockerfile: backend/Dockerfile
     container_name: admin-docs-acceptance-backend
     restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    cpus: "1.50"
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -71,6 +82,15 @@ services:
       dockerfile: frontend/Dockerfile
     container_name: admin-docs-acceptance-frontend
     restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: "0.50"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     ports:
       - "${ACCEPTANCE_FRONTEND_PORT:-18080}:80"
     depends_on:
