@@ -9,12 +9,19 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildMigrationReport,
   getMigrationBlockingIssues,
+  loadPrismaClient,
   orderTreeRows,
   parseArgs,
   referenceId,
   readLegacySnapshot,
   reportToCsv,
 } from "./migrate-legacy-assets.mjs";
+
+test("loadPrismaClient resolves the backend workspace dependency", () => {
+  const prismaClient = loadPrismaClient();
+
+  assert.equal(typeof prismaClient.PrismaClient, "function");
+});
 
 test("parseArgs defaults to a read-only dry-run", () => {
   const sourceDb = resolve("fixtures", "data", "legacy.sqlite");

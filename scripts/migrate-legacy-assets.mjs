@@ -12,6 +12,7 @@
 
 import { createHash, randomBytes, scryptSync } from "node:crypto";
 import { createReadStream, copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, extname, basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -19,6 +20,7 @@ import { DatabaseSync } from "node:sqlite";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_TARGET_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
 const SOURCE_SYSTEM = "ai-asset-management-system-sqlite";
+const requireFromBackend = createRequire(join(REPO_ROOT, "backend", "package.json"));
 
 const SOURCE_TABLES = [
   "organizations",
@@ -633,6 +635,10 @@ function dateOrNull(value) {
   return asDate(value);
 }
 
+export function loadPrismaClient() {
+  return requireFromBackend("@prisma/client");
+}
+
 async function applyMigration(options, snapshot, report) {
   if (!options.apply) {
     return { applied: false, imported: 0 };
@@ -642,7 +648,7 @@ async function applyMigration(options, snapshot, report) {
     throw new Error("--apply 必须提供 MIGRATION_DEFAULT_PASSWORD，且长度至少为 12；密码不会写入报告");
   }
 
-  const { PrismaClient, UserRole, UserStatus } = await import("@prisma/client");
+  const { PrismaClient, UserRole, UserStatus } = loadPrismaClient();
   let prisma = new PrismaClient();
   const rootPrisma = prisma;
   const importReport = { applied: true, imported: 0, updated: 0, skipped: 0, errors: [] };
