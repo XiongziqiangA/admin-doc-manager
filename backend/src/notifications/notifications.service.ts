@@ -202,6 +202,7 @@ export class NotificationsService {
 
 function approvalLabel(type: string) {
   const labels: Record<string, string> = {
+    ASSET_INTAKE: "历史资产入库申请",
     ASSET_RESERVATION: "资产预约申请",
     ASSET_BORROW: "资产借用申请",
     ASSET_TRANSFER: "资产调拨申请",

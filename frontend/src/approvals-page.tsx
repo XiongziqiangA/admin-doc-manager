@@ -34,6 +34,7 @@ const approvalStatus = {
 } as const;
 
 const businessTypeLabel = {
+  ASSET_INTAKE: "历史资产入库",
   ASSET_RESERVATION: "资产预约",
   ASSET_BORROW: "资产借用",
   ASSET_TRANSFER: "资产调拨",
@@ -129,7 +130,7 @@ export function ApprovalsPage({ currentUser }: ApprovalsPageProps) {
       render: (_, record) => (
         <Space size={2} wrap>
           <Button type="text" icon={<EyeOutlined />} title="查看详情" aria-label="查看审批详情" onClick={() => setDetail(record)} />
-          {isAdmin && record.status === "PENDING" ? (
+          {isAdmin && record.status === "PENDING" && record.businessType !== "ASSET_INTAKE" ? (
             <>
               <Button type="link" icon={<CheckOutlined />} onClick={() => openReview(record, "approve")}>通过</Button>
               <Button type="link" danger icon={<CloseOutlined />} onClick={() => openReview(record, "reject")}>驳回</Button>
@@ -145,7 +146,7 @@ export function ApprovalsPage({ currentUser }: ApprovalsPageProps) {
       <div className="asset-page-heading">
         <div>
           <Typography.Title level={2} className="page-title">审批中心</Typography.Title>
-          <Typography.Paragraph className="page-lead">{isAdmin ? "处理资产预约、借用和调拨申请，并查看完整处理过程。" : "查看本人提交的申请、审批结果和处理意见。"}</Typography.Paragraph>
+          <Typography.Paragraph className="page-lead">{isAdmin ? "处理资产预约、借用、调拨和退出申请，并查看迁移保留的历史入库审批。" : "查看本人提交的申请、审批结果和处理意见。"}</Typography.Paragraph>
         </div>
         <Space wrap>
           <Select

@@ -321,6 +321,7 @@ enum AssetExitStatus {
 }
 
 enum ApprovalBusinessType {
+  ASSET_INTAKE
   ASSET_RESERVATION
   ASSET_BORROW
   ASSET_TRANSFER
