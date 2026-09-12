@@ -1,16 +1,17 @@
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, safeStorage, shell } from "electron";
 import type { OpenDialogOptions } from "electron";
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 
 const APP_NAME = "企业行政资料管理系统";
-const APP_URL = "http://localhost:8080";
-const HEALTH_URL = `${APP_URL}/api/health`;
+const DEFAULT_LOCAL_URL = "http://localhost:8080";
+const RUNTIME_CONFIG_FILE = "runtime-config.json";
 const DOCKER_DESKTOP_EXE = "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe";
 const ICON_FILE = "icon.ico";
 const PROJECT_ROOT_FILE = "project-root.txt";
@@ -154,6 +155,18 @@ let isQuitting = false;
 let projectRoot = "";
 const pickedFiles = new Map<string, string>();
 
+type RuntimeMode = "local" | "server";
+
+interface RuntimeConfig {
+  mode: RuntimeMode;
+  serverUrl: string;
+}
+
+let runtimeConfig: RuntimeConfig = {
+  mode: "local",
+  serverUrl: DEFAULT_LOCAL_URL,
+};
+
 type StatusKind = "starting" | "ready" | "error";
 
 interface DesktopSelectedFile {
@@ -199,6 +212,11 @@ interface DesktopSavedLoginPayload {
   password: string;
 }
 
+interface RuntimeConfigPayload {
+  mode: RuntimeMode;
+  serverUrl?: string;
+}
+
 interface MultipartBody {
   body: Buffer;
   contentType: string;
@@ -207,6 +225,117 @@ interface MultipartBody {
 interface ApiResponseBody {
   data?: unknown;
   message?: string;
+}
+
+function runtimeConfigPath() {
+  return join(app.getPath("userData"), RUNTIME_CONFIG_FILE);
+}
+
+function normalizeServerUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    throw new Error("服务器地址不能为空。");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error("服务器地址格式不正确，请填写完整的 http:// 或 https:// 地址。");
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new Error("服务器地址只支持 http:// 或 https://。");
+  }
+  if (url.username || url.password || url.hash || url.search || !["", "/"].includes(url.pathname)) {
+    throw new Error("服务器地址不能包含账号、密码、子路径、查询参数或片段。");
+  }
+  if (url.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+    throw new Error("服务器模式必须使用 HTTPS 地址；本机调试才允许 HTTP。");
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function parseRuntimeConfig(value: unknown): RuntimeConfig {
+  if (!value || typeof value !== "object") {
+    return { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+  const candidate = value as { mode?: unknown; serverUrl?: unknown };
+  if (candidate.mode !== "local" && candidate.mode !== "server") {
+    return { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+  if (candidate.mode === "local") {
+    return { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+  if (typeof candidate.serverUrl !== "string") {
+    return { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+  try {
+    return { mode: "server", serverUrl: normalizeServerUrl(candidate.serverUrl) };
+  } catch {
+    return { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+}
+
+function loadRuntimeConfig() {
+  const configuredUrl = process.env.ADMIN_DOCS_SERVER_URL?.trim();
+  if (configuredUrl) {
+    runtimeConfig = { mode: "server", serverUrl: normalizeServerUrl(configuredUrl) };
+    return runtimeConfig;
+  }
+
+  const filePath = runtimeConfigPath();
+  if (!existsSync(filePath)) {
+    return runtimeConfig;
+  }
+  try {
+    runtimeConfig = parseRuntimeConfig(JSON.parse(readFileSync(filePath, "utf8")));
+  } catch {
+    runtimeConfig = { mode: "local", serverUrl: DEFAULT_LOCAL_URL };
+  }
+  return runtimeConfig;
+}
+
+function saveRuntimeConfig(payload: RuntimeConfigPayload) {
+  if (payload.mode !== "local" && payload.mode !== "server") {
+    throw new Error("连接模式不正确。");
+  }
+  const next: RuntimeConfig = payload.mode === "local"
+    ? { mode: "local", serverUrl: DEFAULT_LOCAL_URL }
+    : { mode: "server", serverUrl: normalizeServerUrl(payload.serverUrl ?? "") };
+  const filePath = runtimeConfigPath();
+  mkdirSync(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  renameSync(tempPath, filePath);
+  runtimeConfig = next;
+  return next;
+}
+
+function systemUrl(pathname = "/") {
+  return new URL(pathname, `${runtimeConfig.serverUrl}/`).toString();
+}
+
+function systemOrigin() {
+  return new URL(runtimeConfig.serverUrl).origin;
+}
+
+function isTrustedRenderer(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) {
+  if (event.sender !== mainWindow?.webContents) {
+    return false;
+  }
+  const frameUrl = event.senderFrame?.url ?? "";
+  if (frameUrl.startsWith("data:text/html")) {
+    return true;
+  }
+  try {
+    return new URL(frameUrl).origin === systemOrigin();
+  } catch {
+    return false;
+  }
+}
+
+function requestForUrl(url: URL, options: Parameters<typeof httpRequest>[1], callback: Parameters<typeof httpRequest>[2]) {
+  return url.protocol === "https:" ? httpsRequest(url, options, callback) : httpRequest(url, options, callback);
 }
 
 function findProjectRoot() {
@@ -299,7 +428,7 @@ async function delay(ms: number) {
 
 async function isHealthReady() {
   try {
-    const response = await fetch(HEALTH_URL);
+    const response = await fetch(systemUrl("/api/health"));
     return response.ok;
   } catch {
     return false;
@@ -347,6 +476,9 @@ async function ensureDockerReady() {
 }
 
 async function startStack() {
+  if (runtimeConfig.mode !== "local") {
+    throw new Error("当前为服务器模式，不需要启动本机 Docker。");
+  }
   await showStatus("starting", "正在检查 Docker Desktop...");
   await ensureDockerReady();
   await showStatus("starting", "正在启动本地服务...");
@@ -365,12 +497,20 @@ async function startStack() {
 }
 
 async function stopStack() {
+  if (runtimeConfig.mode !== "local") {
+    await showStatus("ready", "当前为服务器模式，本机没有需要停止的服务。");
+    return;
+  }
   await showStatus("starting", "正在停止本地服务...");
   await runDocker(composeArgs(["down"]));
   await showStatus("ready", "系统已停止，可通过托盘菜单重新启动。");
 }
 
 async function restartStack() {
+  if (runtimeConfig.mode !== "local") {
+    await showStatus("ready", "当前为服务器模式，请使用连接设置切换服务器地址。");
+    return;
+  }
   await showStatus("starting", "正在重启本地服务...");
   await runDocker(composeArgs(["restart"]));
   for (let i = 0; i < 40; i += 1) {
@@ -382,6 +522,28 @@ async function restartStack() {
     await delay(3000);
   }
   throw new Error("系统重启超时，请检查 Docker 容器状态。");
+}
+
+async function connectToConfiguredServer() {
+  if (runtimeConfig.mode === "local") {
+    projectRoot = findProjectRoot();
+    updateTrayMenu();
+    await startStack();
+    return;
+  }
+
+  projectRoot = "";
+  updateTrayMenu();
+  await showStatus("starting", `正在连接服务器：${runtimeConfig.serverUrl}`);
+  for (let index = 0; index < 40; index += 1) {
+    if (await isHealthReady()) {
+      await openSystem();
+      return;
+    }
+    await showStatus("starting", `正在等待服务器就绪... ${index + 1}/40`);
+    await delay(3000);
+  }
+  throw new Error("服务器连接超时，请检查地址、HTTPS 证书和服务状态。");
 }
 
 function createWindow() {
@@ -416,7 +578,10 @@ function createWindow() {
 }
 
 function registerDesktopFilePicker() {
-  ipcMain.handle("admin-docs:pick-files", async (): Promise<DesktopSelectedFile[]> => {
+  ipcMain.handle("admin-docs:pick-files", async (event): Promise<DesktopSelectedFile[]> => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
     const options: OpenDialogOptions = {
       title: "选择要上传的文件",
       properties: ["openFile", "multiSelections"],
@@ -437,7 +602,7 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.on("admin-docs:register-dropped-files", (event, value: unknown) => {
-    if (event.sender !== mainWindow?.webContents || !Array.isArray(value)) {
+    if (!isTrustedRenderer(event) || !Array.isArray(value)) {
       logDesktopEvent("drop-register-ignored", {
         fromMainWindow: event.sender === mainWindow?.webContents,
         isArray: Array.isArray(value),
@@ -456,7 +621,7 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.handle("admin-docs:register-dropped-files-direct", (event, value: unknown): DesktopDroppedFiles => {
-    if (event.sender !== mainWindow?.webContents || !Array.isArray(value)) {
+    if (!isTrustedRenderer(event) || !Array.isArray(value)) {
       logDesktopEvent("drop-register-direct-ignored", {
         fromMainWindow: event.sender === mainWindow?.webContents,
         isArray: Array.isArray(value),
@@ -475,13 +640,16 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.on("admin-docs:desktop-debug", (event, details: unknown) => {
-    if (event.sender !== mainWindow?.webContents || !details || typeof details !== "object") {
+    if (!isTrustedRenderer(event) || !details || typeof details !== "object") {
       return;
     }
     logDesktopEvent("renderer-debug", details as Record<string, unknown>);
   });
 
-  ipcMain.handle("admin-docs:upload-document", async (_event, payload: DesktopUploadPayload) => {
+  ipcMain.handle("admin-docs:upload-document", async (event, payload: DesktopUploadPayload) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
     const filePath = pickedFiles.get(payload.fileId);
     if (!filePath) {
       throw new Error("未找到已选择的文件，请重新选择后上传。");
@@ -526,7 +694,10 @@ function registerDesktopFilePicker() {
     return body?.data;
   });
 
-  ipcMain.handle("admin-docs:upload-document-version", async (_event, payload: DesktopVersionUploadPayload) => {
+  ipcMain.handle("admin-docs:upload-document-version", async (event, payload: DesktopVersionUploadPayload) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
     const filePath = pickedFiles.get(payload.fileId);
     if (!filePath) {
       throw new Error("未找到已选择的文件，请重新选择后上传。");
@@ -566,7 +737,7 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.handle("admin-docs:open-document-file", async (event, payload: DesktopOpenDocumentPayload) => {
-    if (event.sender !== mainWindow?.webContents) {
+    if (!isTrustedRenderer(event)) {
       throw new Error("非法的桌面应用调用来源。");
     }
     if (!payload.accessToken) {
@@ -590,7 +761,7 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.handle("admin-docs:print-document-file", async (event, payload: DesktopOpenDocumentPayload) => {
-    if (event.sender !== mainWindow?.webContents) {
+    if (!isTrustedRenderer(event)) {
       throw new Error("非法的桌面应用调用来源。");
     }
     if (!payload.accessToken) {
@@ -614,14 +785,14 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.handle("admin-docs:get-saved-login", (event): DesktopSavedLoginPayload | null => {
-    if (event.sender !== mainWindow?.webContents) {
+    if (!isTrustedRenderer(event)) {
       throw new Error("非法的桌面应用调用来源。");
     }
     return readSavedLogin();
   });
 
   ipcMain.handle("admin-docs:save-login", (event, payload: DesktopSavedLoginPayload) => {
-    if (event.sender !== mainWindow?.webContents) {
+    if (!isTrustedRenderer(event)) {
       throw new Error("非法的桌面应用调用来源。");
     }
     saveLogin(payload);
@@ -629,10 +800,44 @@ function registerDesktopFilePicker() {
   });
 
   ipcMain.handle("admin-docs:clear-saved-login", (event) => {
-    if (event.sender !== mainWindow?.webContents) {
+    if (!isTrustedRenderer(event)) {
       throw new Error("非法的桌面应用调用来源。");
     }
     clearSavedLogin();
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:get-runtime-config", (event): RuntimeConfig => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    return runtimeConfig;
+  });
+
+  ipcMain.handle("admin-docs:save-runtime-config", async (event, payload: RuntimeConfigPayload) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    const next = saveRuntimeConfig(payload);
+    updateTrayMenu();
+    await showStatus("starting", "连接设置已保存，正在重新连接...");
+    void connectToConfiguredServer().catch(showError);
+    return next;
+  });
+
+  ipcMain.handle("admin-docs:open-runtime-settings", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    await showRuntimeSettingsPage();
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:open-system", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    await openSystem();
     return true;
   });
 }
@@ -708,8 +913,9 @@ function buildMultipartBody(
 
 function postMultipartResponse(pathname: string, accessToken: string, multipart: MultipartBody) {
   return new Promise<{ ok: boolean; status: number; json: () => Promise<ApiResponseBody | undefined> }>((resolvePromise, reject) => {
-    const url = new URL(pathname, APP_URL);
-    const request = httpRequest(
+    const url = new URL(pathname, `${runtimeConfig.serverUrl}/`);
+    const request = requestForUrl(
+      url,
       {
         method: "POST",
         hostname: url.hostname,
@@ -750,8 +956,9 @@ function postMultipartResponse(pathname: string, accessToken: string, multipart:
 function downloadDocumentToTemp(payload: DesktopOpenDocumentPayload, endpoint: "download" | "preview" = "download") {
   return new Promise<string>((resolvePromise, reject) => {
     const query = payload.versionId ? `?versionId=${encodeURIComponent(payload.versionId)}` : "";
-    const url = new URL(`/api/documents/${payload.documentId}/${endpoint}${query}`, APP_URL);
-    const request = httpRequest(
+    const url = new URL(`/api/documents/${payload.documentId}/${endpoint}${query}`, `${runtimeConfig.serverUrl}/`);
+    const request = requestForUrl(
+      url,
       {
         method: "GET",
         hostname: url.hostname,
@@ -1076,14 +1283,31 @@ function createTray() {
   const icon = createTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip(APP_NAME);
+  updateTrayMenu();
+  tray.on("click", () => void openSystem());
+}
+
+function updateTrayMenu() {
+  if (!tray) {
+    return;
+  }
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "打开系统", click: () => void openSystem() },
+      { label: "连接设置", click: () => void showRuntimeSettingsPage() },
       { label: "重启系统", click: () => void restartStack().catch(showError) },
       { label: "停止系统", click: () => void stopStack().catch(showError) },
       { type: "separator" },
-      { label: "打开文件存储目录", click: () => void shell.openPath(join(projectRoot, "data", "storage")) },
-      { label: "打开项目目录", click: () => void shell.openPath(projectRoot) },
+      {
+        label: "打开文件存储目录",
+        enabled: runtimeConfig.mode === "local" && Boolean(projectRoot),
+        click: () => void shell.openPath(join(projectRoot, "data", "storage")),
+      },
+      {
+        label: "打开项目目录",
+        enabled: runtimeConfig.mode === "local" && Boolean(projectRoot),
+        click: () => void shell.openPath(projectRoot),
+      },
       { type: "separator" },
       {
         label: "退出桌面应用",
@@ -1094,7 +1318,6 @@ function createTray() {
       },
     ]),
   );
-  tray.on("click", () => void openSystem());
 }
 
 function createTrayIcon() {
@@ -1120,6 +1343,75 @@ function resolveIconPath() {
   ];
 
   return candidates.find((candidate) => existsSync(candidate)) ?? "";
+}
+
+async function showRuntimeSettingsPage() {
+  if (!mainWindow) {
+    return;
+  }
+  const current = runtimeConfig;
+  const html = `
+    <!doctype html>
+    <html lang="zh-CN">
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f7fb; color: #111827; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+          main { width: min(560px, calc(100vw - 48px)); padding: 30px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 16px 40px rgb(15 23 42 / 8%); }
+          h1 { margin: 0 0 8px; font-size: 22px; }
+          p { margin: 0 0 22px; color: #4b5563; line-height: 1.6; }
+          label { display: block; margin: 14px 0 7px; color: #374151; font-size: 13px; font-weight: 600; }
+          select, input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827; font: inherit; }
+          .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+          button { height: 38px; padding: 0 16px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
+          #save { background: #1d4ed8; color: #fff; }
+          #back { border: 1px solid #d1d5db; background: #fff; color: #374151; }
+          #message { min-height: 22px; margin-top: 12px; color: #b91c1c; font-size: 13px; }
+          .hint { margin-top: 8px; margin-bottom: 0; color: #6b7280; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>连接设置</h1>
+          <p>选择本机 Docker 服务，或连接已经部署好的企业管理系统服务器。</p>
+          <form id="form">
+            <label for="mode">运行方式</label>
+            <select id="mode">
+              <option value="local" ${current.mode === "local" ? "selected" : ""}>本机模式</option>
+              <option value="server" ${current.mode === "server" ? "selected" : ""}>服务器模式</option>
+            </select>
+            <label for="serverUrl">服务器地址</label>
+            <input id="serverUrl" type="url" placeholder="https://your-server.example.com" value="${escapeHtml(current.mode === "server" ? current.serverUrl : "")}" />
+            <p class="hint">服务器模式要求使用 HTTPS；本机调试地址可使用 http://localhost。</p>
+            <div id="message" role="alert"></div>
+            <div class="actions"><button id="back" type="button">返回</button><button id="save" type="submit">保存并连接</button></div>
+          </form>
+        </main>
+        <script>
+          const mode = document.getElementById('mode');
+          const serverUrl = document.getElementById('serverUrl');
+          const message = document.getElementById('message');
+          const sync = () => { serverUrl.disabled = mode.value !== 'server'; };
+          mode.addEventListener('change', sync);
+          sync();
+          document.getElementById('back').addEventListener('click', () => window.adminDocsDesktop?.openSystem());
+          document.getElementById('form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            message.textContent = '正在保存...';
+            try {
+              await window.adminDocsDesktop?.saveRuntimeConfig({ mode: mode.value, serverUrl: serverUrl.value });
+            } catch (error) {
+              message.textContent = error instanceof Error ? error.message : String(error);
+            }
+          });
+        </script>
+      </body>
+    </html>
+  `;
+  await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 async function showStatus(kind: StatusKind, message: string) {
@@ -1160,8 +1452,10 @@ async function showStatus(kind: StatusKind, message: string) {
         <main>
           <div class="status">${escapeHtml(message)}</div>
           <h1>${APP_NAME}</h1>
-          <p>桌面应用正在管理本地 Docker 服务。启动完成后会自动打开系统窗口。</p>
+          <p>当前连接方式：${runtimeConfig.mode === "local" ? "本机 Docker 服务" : `服务器 ${escapeHtml(runtimeConfig.serverUrl)}`}。启动完成后会自动打开系统窗口。</p>
+          <button id="settings" type="button">连接设置</button>
         </main>
+        <script>document.getElementById('settings')?.addEventListener('click', () => window.adminDocsDesktop?.openRuntimeSettings());</script>
       </body>
     </html>
   `;
@@ -1181,7 +1475,7 @@ async function openSystem() {
     return;
   }
   await mainWindow.webContents.session.clearCache();
-  await mainWindow.loadURL(`${APP_URL}/?v=${Date.now()}`);
+  await mainWindow.loadURL(`${systemUrl("/")}?v=${Date.now()}`);
   mainWindow.show();
   mainWindow.focus();
 }
@@ -1230,15 +1524,11 @@ if (!hasLock) {
 
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    loadRuntimeConfig();
     registerDesktopFilePicker();
     createWindow();
     createTray();
-    try {
-      projectRoot = findProjectRoot();
-      void startStack().catch(showError);
-    } catch (error) {
-      void showError(error);
-    }
+    void connectToConfiguredServer().catch(showError);
   });
 
   app.on("window-all-closed", () => {

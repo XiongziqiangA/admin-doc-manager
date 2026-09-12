@@ -99,6 +99,10 @@ contextBridge.exposeInMainWorld("adminDocsDesktop", {
   getSavedLogin: () => ipcRenderer.invoke("admin-docs:get-saved-login"),
   saveLogin: (payload: unknown) => ipcRenderer.invoke("admin-docs:save-login", payload),
   clearSavedLogin: () => ipcRenderer.invoke("admin-docs:clear-saved-login"),
+  getRuntimeConfig: () => ipcRenderer.invoke("admin-docs:get-runtime-config"),
+  saveRuntimeConfig: (payload: unknown) => ipcRenderer.invoke("admin-docs:save-runtime-config", payload),
+  openRuntimeSettings: () => ipcRenderer.invoke("admin-docs:open-runtime-settings"),
+  openSystem: () => ipcRenderer.invoke("admin-docs:open-system"),
   debug: (event: string, details?: Record<string, unknown>) => logDragEvent(event, details),
   onDroppedFiles: (callback: (payload: DesktopDroppedFiles) => void) => {
     droppedFileCallbacks.add(callback);

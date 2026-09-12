@@ -135,6 +135,10 @@ declare global {
       getSavedLogin: () => Promise<SavedLoginCredentials | null>;
       saveLogin: (payload: SavedLoginCredentials) => Promise<boolean>;
       clearSavedLogin: () => Promise<boolean>;
+      getRuntimeConfig: () => Promise<{ mode: "local" | "server"; serverUrl: string }>;
+      saveRuntimeConfig: (payload: { mode: "local" | "server"; serverUrl?: string }) => Promise<unknown>;
+      openRuntimeSettings: () => Promise<boolean>;
+      openSystem: () => Promise<boolean>;
       debug: (event: string, details?: Record<string, unknown>) => void;
       onDroppedFiles: (callback: (payload: DesktopDroppedFiles) => void) => () => void;
     };
