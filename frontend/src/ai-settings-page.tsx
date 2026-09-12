@@ -55,15 +55,19 @@ export function AiSettingsPage() {
 
   const applyConfig = (result: FinanceAiConfig) => {
     setConfig(result);
+  };
+
+  useEffect(() => {
+    if (loading || !config) return;
     form.resetFields();
     form.setFieldsValue({
-      enabled: result.enabled,
-      baseUrl: result.baseUrl,
-      model: result.model,
+      enabled: config.enabled,
+      baseUrl: config.baseUrl,
+      model: config.model,
       apiKey: undefined,
       clearApiKey: false,
     });
-  };
+  }, [config, form, loading]);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -302,8 +306,10 @@ export function AiSettingsPage() {
             </Form.Item>
             {config?.apiKeyConfigured && (
               <Form.Item name="clearApiKey" valuePropName="checked">
-                <Switch checkedChildren="清除" unCheckedChildren="保留" />
-                <Text className="ai-settings-inline-label">清除当前 API Key</Text>
+                <div className="ai-settings-clear-key-control">
+                  <Switch checkedChildren="清除" unCheckedChildren="保留" />
+                  <Text className="ai-settings-inline-label">清除当前 API Key</Text>
+                </div>
               </Form.Item>
             )}
             <Space wrap className="ai-settings-actions">

@@ -2,7 +2,7 @@ import { PrismaClient, UserRole, UserStatus } from "@prisma/client";
 import { randomBytes, scrypt } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const prisma = new PrismaClient();
@@ -45,17 +45,32 @@ async function hashPassword(password) {
   return `scrypt:${salt}:${derivedKey.toString("hex")}`;
 }
 
+export async function retireLegacyDefaultAdmin({ prisma: client, username, now = new Date() }) {
+  if (username === "admin") {
+    return 0;
+  }
+
+  const result = await client.user.updateMany({
+    where: {
+      username: "admin",
+      status: UserStatus.ACTIVE,
+      deletedAt: null,
+    },
+    data: {
+      status: UserStatus.DISABLED,
+      deletedAt: now,
+    },
+  });
+  return result.count;
+}
+
 async function main() {
   const username = process.env.ADMIN_USERNAME ?? "admin";
   const password = process.env.ADMIN_PASSWORD ?? "ChangeMe123!";
   const realName = process.env.ADMIN_REAL_NAME ?? "\u7cfb\u7edf\u7ba1\u7406\u5458";
   const overwriteExisting = process.env.SEED_ADMIN_OVERWRITE === "true";
 
-  if (username !== "admin") {
-    await prisma.user.deleteMany({
-      where: { username: "admin" },
-    });
-  }
+  await retireLegacyDefaultAdmin({ prisma, username });
 
   const existing = await prisma.user.findUnique({ where: { username } });
 
@@ -89,11 +104,13 @@ async function main() {
   console.log(`Admin user "${username}" created.`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  main()
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
