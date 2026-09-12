@@ -103,6 +103,9 @@ contextBridge.exposeInMainWorld("adminDocsDesktop", {
   saveRuntimeConfig: (payload: unknown) => ipcRenderer.invoke("admin-docs:save-runtime-config", payload),
   openRuntimeSettings: () => ipcRenderer.invoke("admin-docs:open-runtime-settings"),
   openSystem: () => ipcRenderer.invoke("admin-docs:open-system"),
+  startStack: () => ipcRenderer.invoke("admin-docs:start-stack"),
+  stopStack: () => ipcRenderer.invoke("admin-docs:stop-stack"),
+  restartStack: () => ipcRenderer.invoke("admin-docs:restart-stack"),
   debug: (event: string, details?: Record<string, unknown>) => logDragEvent(event, details),
   onDroppedFiles: (callback: (payload: DesktopDroppedFiles) => void) => {
     droppedFileCallbacks.add(callback);

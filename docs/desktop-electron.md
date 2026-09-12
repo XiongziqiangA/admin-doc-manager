@@ -29,6 +29,8 @@ desktop\release\企业行政资料管理系统 安装程序 0.1.0.exe
 start-admin-docs-desktop（桌面应用）.bat
 ```
 
+该脚本会优先启动 `desktop\\release` 中已经生成的便携版程序；如果便携版不存在，则自动回退到 Electron 开发模式。
+
 也可以在项目根目录运行：
 
 ```powershell
@@ -41,8 +43,10 @@ pnpm --filter desktop dev
 - 执行 `docker compose --env-file .env.production -f docker-compose.prod.yml up -d`。
 - 等待 `http://localhost:8080/api/health` 返回正常。
 - 自动打开 `http://localhost:8080`。
+- 桌面状态页提供“启动 Docker 服务”“重启 Docker 服务”“停止 Docker 服务”快捷按钮。
 - 关闭窗口时隐藏到系统托盘。
-- 托盘菜单支持打开系统、重启系统、停止系统、打开文件存储目录、打开项目目录、退出桌面应用。
+- 托盘菜单支持打开系统、启动/重启/停止本项目 Docker 服务、打开文件存储目录、打开项目目录、退出桌面应用。
+- “停止 Docker 服务”只执行当前项目的 Compose `down`，不会关闭 Docker Desktop，也不会影响其他项目的容器。
 
 ## 服务器模式行为
 

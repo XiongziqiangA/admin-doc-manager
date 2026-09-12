@@ -153,6 +153,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 let projectRoot = "";
+let stackOperation: Promise<void> | null = null;
 const pickedFiles = new Map<string, string>();
 
 type RuntimeMode = "local" | "server";
@@ -524,11 +525,26 @@ async function restartStack() {
   throw new Error("系统重启超时，请检查 Docker 容器状态。");
 }
 
+function runStackOperation(operation: () => Promise<void>) {
+  if (stackOperation) {
+    return stackOperation;
+  }
+
+  const pending = operation();
+  const tracked = pending.finally(() => {
+    if (stackOperation === tracked) {
+      stackOperation = null;
+    }
+  });
+  stackOperation = tracked;
+  return tracked;
+}
+
 async function connectToConfiguredServer() {
   if (runtimeConfig.mode === "local") {
     projectRoot = findProjectRoot();
     updateTrayMenu();
-    await startStack();
+    await runStackOperation(startStack);
     return;
   }
 
@@ -838,6 +854,42 @@ function registerDesktopFilePicker() {
       throw new Error("非法的桌面应用调用来源。");
     }
     await openSystem();
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:start-stack", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    if (runtimeConfig.mode === "local" && !projectRoot) {
+      projectRoot = findProjectRoot();
+      updateTrayMenu();
+    }
+    await runStackOperation(startStack);
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:stop-stack", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    if (runtimeConfig.mode === "local" && !projectRoot) {
+      projectRoot = findProjectRoot();
+      updateTrayMenu();
+    }
+    await runStackOperation(stopStack);
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:restart-stack", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    if (runtimeConfig.mode === "local" && !projectRoot) {
+      projectRoot = findProjectRoot();
+      updateTrayMenu();
+    }
+    await runStackOperation(restartStack);
     return true;
   });
 }
@@ -1295,8 +1347,21 @@ function updateTrayMenu() {
     Menu.buildFromTemplate([
       { label: "打开系统", click: () => void openSystem() },
       { label: "连接设置", click: () => void showRuntimeSettingsPage() },
-      { label: "重启系统", click: () => void restartStack().catch(showError) },
-      { label: "停止系统", click: () => void stopStack().catch(showError) },
+      {
+        label: "启动 Docker 服务",
+        enabled: runtimeConfig.mode === "local" && Boolean(projectRoot),
+        click: () => void runStackOperation(startStack).catch(showError),
+      },
+      {
+        label: "重启 Docker 服务",
+        enabled: runtimeConfig.mode === "local" && Boolean(projectRoot),
+        click: () => void runStackOperation(restartStack).catch(showError),
+      },
+      {
+        label: "停止 Docker 服务",
+        enabled: runtimeConfig.mode === "local" && Boolean(projectRoot),
+        click: () => void runStackOperation(stopStack).catch(showError),
+      },
       { type: "separator" },
       {
         label: "打开文件存储目录",
@@ -1446,6 +1511,13 @@ async function showStatus(kind: StatusKind, message: string) {
           h1 { margin: 0 0 12px; font-size: 22px; }
           p { margin: 0; color: #4b5563; line-height: 1.7; }
           .status { color: ${color}; font-weight: 700; margin-bottom: 10px; }
+          .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+          button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
+          button:disabled { cursor: wait; opacity: .6; }
+          .primary { background: #1d4ed8; color: #fff; }
+          .danger { background: #dc2626; color: #fff; }
+          .secondary { border: 1px solid #d1d5db; background: #fff; color: #374151; }
+          #feedback { min-height: 22px; margin-top: 12px; color: #b91c1c; font-size: 13px; }
         </style>
       </head>
       <body>
@@ -1453,9 +1525,32 @@ async function showStatus(kind: StatusKind, message: string) {
           <div class="status">${escapeHtml(message)}</div>
           <h1>${APP_NAME}</h1>
           <p>当前连接方式：${runtimeConfig.mode === "local" ? "本机 Docker 服务" : `服务器 ${escapeHtml(runtimeConfig.serverUrl)}`}。启动完成后会自动打开系统窗口。</p>
-          <button id="settings" type="button">连接设置</button>
+          <div id="feedback" role="alert"></div>
+          <div class="actions">
+            ${runtimeConfig.mode === "local" ? `
+              <button id="start" class="primary" type="button">启动 Docker 服务</button>
+              <button id="restart" class="secondary" type="button">重启 Docker 服务</button>
+              <button id="stop" class="danger" type="button">停止 Docker 服务</button>
+            ` : ""}
+            <button id="settings" class="secondary" type="button">连接设置</button>
+          </div>
         </main>
-        <script>document.getElementById('settings')?.addEventListener('click', () => window.adminDocsDesktop?.openRuntimeSettings());</script>
+        <script>
+          const feedback = document.getElementById('feedback');
+          const invoke = (method) => {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach((button) => { button.disabled = true; });
+            if (feedback) feedback.textContent = '正在执行，请稍候...';
+            window.adminDocsDesktop?.[method]().catch((error) => {
+              buttons.forEach((button) => { button.disabled = false; });
+              if (feedback) feedback.textContent = error instanceof Error ? error.message : String(error);
+            });
+          };
+          document.getElementById('start')?.addEventListener('click', () => invoke('startStack'));
+          document.getElementById('restart')?.addEventListener('click', () => invoke('restartStack'));
+          document.getElementById('stop')?.addEventListener('click', () => invoke('stopStack'));
+          document.getElementById('settings')?.addEventListener('click', () => window.adminDocsDesktop?.openRuntimeSettings());
+        </script>
       </body>
     </html>
   `;
