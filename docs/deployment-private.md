@@ -134,6 +134,8 @@ Leave `AI_SEARCH_ENABLED=false` when all search processing must remain local. To
 - [ ] Backup script creates `database.dump` and `storage.zip`.
 - [ ] Restore has been tested once on a non-production copy.
 
+For a repeatable isolated validation without touching the production `data` directory or port 8080, use `docker-compose.acceptance.yml` with `ACCEPTANCE_FRONTEND_PORT=18080`. It writes only to `data/acceptance-postgres` and `data/acceptance-storage`; stop and remove it after testing with the same Compose file and project name.
+
 ## Hardening Notes
 
 - Do not expose PostgreSQL to the LAN.

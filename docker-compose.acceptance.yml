@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: admin-docs-acceptance-postgres
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ./data/acceptance-postgres:/var/lib/postgresql/data
+    ports:
+      - "${ACCEPTANCE_POSTGRES_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: admin-docs-acceptance-backend
+    restart: "no"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      BACKEND_PORT: 3000
+      STORAGE_ROOT: /app/storage
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: 8h
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_REAL_NAME: Acceptance Administrator
+      ORGANIZATION_NAME: Acceptance Organization
+      SEED_ADMIN_OVERWRITE: "false"
+      CONTENT_INDEX_MAX_CHARS: 500000
+      AI_SEARCH_ENABLED: "false"
+      FINANCE_AI_ENABLED: "false"
+      OPENAI_BASE_URL: https://api.openai.com/v1
+      OPENAI_MODEL: gpt-4o-mini
+      FINANCE_AI_TIMEOUT_MS: 60000
+      FINANCE_AI_MAX_OUTPUT_TOKENS: 1800
+      FINANCE_AI_MAX_DOCUMENTS: 500
+      FINANCE_AI_MAX_INPUT_CHARS: 12000
+      EMBEDDING_MODEL: text-embedding-3-small
+      EMBEDDING_MAX_INPUT_CHARS: 8000
+    volumes:
+      - ./data/acceptance-storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "pnpm prisma migrate deploy &&
+      pnpm seed:base-data &&
+      pnpm seed:admin &&
+      pnpm seed:enterprise-foundation &&
+      node dist/main.js"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: admin-docs-acceptance-frontend
+    restart: "no"
+    ports:
+      - "${ACCEPTANCE_FRONTEND_PORT:-18080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

@@ -52,7 +52,8 @@
 
 - Electron 38
 - Electron Builder
-- 启动时检查 Docker Desktop 和后端健康状态
+- 本机模式启动时检查 Docker Desktop 和后端健康状态
+- 服务器模式通过 HTTPS 连接已部署的服务器，不启动本机 Docker
 - 支持托盘、桌面文件选择、批量上传、拖放上传、文件打开和打印
 - 桌面端是本地 Web 系统的入口，不替代 PostgreSQL、Docker 或文件存储
 
@@ -176,16 +177,45 @@ docker compose --env-file .env.production -f docker-compose.prod.yml restart
 
 ### 桌面应用
 
-桌面端发布文件位于 `desktop/release`。使用便携版或安装版前，仍需保留项目目录、`.env.production`、Docker Desktop 和数据目录。
+桌面端发布文件位于 `desktop/release`。本机模式使用便携版或安装版前，需保留项目目录、`.env.production`、Docker Desktop 和数据目录；服务器模式只需配置可访问的 HTTPS 地址。
 
-桌面端启动流程：
+本机模式启动流程：
 
 1. 检查 Docker Desktop。
 2. 启动 Compose 服务。
 3. 等待 `/api/health` 正常。
 4. 自动打开系统窗口。
 
+服务器模式启动流程：
+
+1. 在桌面端的“连接设置”中选择服务器模式。
+2. 填写完整的 HTTPS 服务器地址。
+3. 桌面端等待服务器 `/api/health` 正常。
+4. 自动打开远程系统窗口；本机不需要 PostgreSQL、Docker 或数据目录。
+
 详细说明见 `docs/desktop-electron.md`。
+
+### 旧资产系统迁移
+
+迁移工具默认只读旧 SQLite 并生成 JSON/CSV 报告：
+
+```powershell
+node scripts/migrate-legacy-assets.mjs `
+  --source-db "C:\path\to\asset-management.sqlite" `
+  --source-storage "C:\path\to\storage"
+```
+
+真正写入前必须先检查 dry-run 报告。`--apply` 会在预检通过后使用单个 PostgreSQL 事务执行；缺失文件、危险路径、层级循环和必需外键缺失会直接拒绝执行。旧 AI 历史、未登记文件等可确认跳过的数据，必须显式增加 `--allow-unsupported`；附件迁移还必须增加 `--copy-files`。初始密码通过环境变量 `MIGRATION_DEFAULT_PASSWORD` 提供，不会写入报告：
+
+```powershell
+$env:MIGRATION_DEFAULT_PASSWORD = "一次性强密码"
+node scripts/migrate-legacy-assets.mjs `
+  --source-db "C:\path\to\asset-management.sqlite" `
+  --source-storage "C:\path\to\storage" `
+  --apply --copy-files
+```
+
+迁移前请备份目标数据库和 `data/storage`；未得到明确确认前不要对真实目标库执行 `--apply`。详细边界见 `docs/legacy-assets-migration.md`。
 
 ## 备份和恢复
 
