@@ -10,7 +10,8 @@
     "dev:desktop": "pnpm --filter desktop dev",
     "dev:frontend": "pnpm --filter frontend dev",
     "desktop": "pnpm --filter desktop dev",
-    "prisma:validate": "pnpm --filter backend prisma:validate"
+    "prisma:validate": "pnpm --filter backend prisma:validate",
+    "test:migration": "node --test scripts/migrate-legacy-assets.test.mjs"
   },
   "engines": {
     "node": ">=22"
