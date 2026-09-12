@@ -11,7 +11,7 @@
  */
 
 import { createHash, randomBytes, scryptSync } from "node:crypto";
-import { createReadStream, copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { createReadStream, copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { dirname, extname, basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
