@@ -21,6 +21,8 @@ desktop\release\企业行政资料管理系统 安装程序 0.1.0.exe
 安装版会创建桌面快捷方式和开始菜单快捷方式。本机模式仍依赖本机 Docker Desktop 和当前项目目录里的部署文件；服务器模式只依赖可访问的 HTTPS 服务器。
 首次打开桌面端如果没有找到项目目录，会显示“选择项目目录并启动”页面。选择同时包含 `docker-compose.prod.yml` 和 `.env.production` 的项目根目录即可，路径会保存到当前 Windows 用户配置中，下次双击会自动使用。该配置不会把密码或 `.env.production` 写入程序包。
 
+如果要让当前合并版本继续使用旧项目的数据，请在当前项目的 `.env.production` 中将 `POSTGRES_DATA_DIR` 和 `STORAGE_DATA_DIR` 指向旧项目的 `data\postgres`、`data\storage`，再选择当前合并项目目录。首次切换版本前应先完成数据库和文件备份。
+
 也可以根据 `desktop\assets\project-root.txt.example` 创建本机专用的 `desktop\assets\project-root.txt`，用于预先指定项目目录；该本机路径文件不会提交到 Git。
 
 ## 开发调试启动
