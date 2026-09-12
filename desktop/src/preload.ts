@@ -102,6 +102,8 @@ contextBridge.exposeInMainWorld("adminDocsDesktop", {
   getRuntimeConfig: () => ipcRenderer.invoke("admin-docs:get-runtime-config"),
   saveRuntimeConfig: (payload: unknown) => ipcRenderer.invoke("admin-docs:save-runtime-config", payload),
   openRuntimeSettings: () => ipcRenderer.invoke("admin-docs:open-runtime-settings"),
+  chooseProjectRoot: () => ipcRenderer.invoke("admin-docs:choose-project-root"),
+  quit: () => ipcRenderer.invoke("admin-docs:quit"),
   openSystem: () => ipcRenderer.invoke("admin-docs:open-system"),
   startStack: () => ipcRenderer.invoke("admin-docs:start-stack"),
   stopStack: () => ipcRenderer.invoke("admin-docs:stop-stack"),

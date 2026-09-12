@@ -19,7 +19,9 @@ desktop\release\企业行政资料管理系统 安装程序 0.1.0.exe
 ```
 
 安装版会创建桌面快捷方式和开始菜单快捷方式。本机模式仍依赖本机 Docker Desktop 和当前项目目录里的部署文件；服务器模式只依赖可访问的 HTTPS 服务器。
-打包前需根据 `desktop\assets\project-root.txt.example` 创建本机专用的 `desktop\assets\project-root.txt`，用于让安装后的应用找到 Docker Compose 和本地存储目录。该本机路径文件不会提交到 Git。
+首次打开桌面端如果没有找到项目目录，会显示“选择项目目录并启动”页面。选择同时包含 `docker-compose.prod.yml` 和 `.env.production` 的项目根目录即可，路径会保存到当前 Windows 用户配置中，下次双击会自动使用。该配置不会把密码或 `.env.production` 写入程序包。
+
+也可以根据 `desktop\assets\project-root.txt.example` 创建本机专用的 `desktop\assets\project-root.txt`，用于预先指定项目目录；该本机路径文件不会提交到 Git。
 
 ## 开发调试启动
 
@@ -74,4 +76,4 @@ pnpm --filter desktop dist
 pnpm --filter desktop dist:installer
 ```
 
-注意：当前版本仍依赖这个项目目录里的 `docker-compose.prod.yml`、`.env.production` 和本地存储目录。便携版 `.exe` 可以放在当前项目目录内使用；如果移动到其他位置，需要先设置 `ADMIN_DOCS_ROOT` 指向项目根目录。
+注意：当前版本仍依赖配置项目目录里的 `docker-compose.prod.yml`、`.env.production` 和本地存储目录。便携版 `.exe` 可以放在任意位置使用；如果项目路径改变，打开托盘“连接设置”重新选择项目目录即可。

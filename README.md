@@ -178,7 +178,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml restart
 
 ### 桌面应用
 
-桌面端发布文件位于 `desktop/release`。本机模式使用便携版或安装版前，需保留项目目录、`.env.production`、Docker Desktop 和数据目录；服务器模式只需配置可访问的 HTTPS 地址。
+桌面端发布文件位于 `desktop/release`。本机模式使用便携版或安装版前，需保留项目目录、`.env.production`、Docker Desktop 和数据目录；首次启动会引导选择项目目录并保存到当前用户配置，项目路径改变后可在托盘“连接设置”重新选择。服务器模式只需配置可访问的 HTTPS 地址。
 
 本机模式启动流程：
 

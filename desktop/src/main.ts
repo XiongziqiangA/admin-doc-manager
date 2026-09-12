@@ -352,8 +352,8 @@ function findProjectRoot() {
 
   for (const candidate of candidates) {
     let current = resolve(candidate);
-    for (let i = 0; i < 5; i += 1) {
-      if (existsSync(join(current, "docker-compose.prod.yml")) && existsSync(join(current, ".env.production"))) {
+    for (let i = 0; i < 10; i += 1) {
+      if (isProjectRoot(current)) {
         return current;
       }
       const parent = dirname(current);
@@ -364,7 +364,19 @@ function findProjectRoot() {
     }
   }
 
-  throw new Error("Project root not found. Set ADMIN_DOCS_ROOT to the project root.");
+  throw new Error("没有找到可用的本机项目目录，请选择同时包含 docker-compose.prod.yml 和 .env.production 的项目目录。");
+}
+
+function isProjectRoot(candidate: string) {
+  return existsSync(join(candidate, "docker-compose.prod.yml")) && existsSync(join(candidate, ".env.production"));
+}
+
+function validateProjectRoot(candidate: string) {
+  const normalized = resolve(candidate.trim());
+  if (!isProjectRoot(normalized)) {
+    throw new Error("所选目录不可用，必须同时包含 docker-compose.prod.yml 和 .env.production。");
+  }
+  return normalized;
 }
 
 function readConfiguredProjectRoots() {
@@ -375,13 +387,27 @@ function readConfiguredProjectRoots() {
   ];
 
   return configFiles.flatMap((file) => {
-    if (!existsSync(file)) {
+    try {
+      if (!existsSync(file)) {
+        return [];
+      }
+
+      const content = readFileSync(file, "utf8").trim();
+      return content ? [content] : [];
+    } catch {
       return [];
     }
-
-    const content = readFileSync(file, "utf8").trim();
-    return content ? [content] : [];
   });
+}
+
+function saveProjectRoot(candidate: string) {
+  const normalized = validateProjectRoot(candidate);
+  const filePath = join(app.getPath("userData"), PROJECT_ROOT_FILE);
+  mkdirSync(dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  writeFileSync(tempPath, `${normalized}\n`, "utf8");
+  renameSync(tempPath, filePath);
+  return normalized;
 }
 
 async function runDocker(args: string[]) {
@@ -542,7 +568,16 @@ function runStackOperation(operation: () => Promise<void>) {
 
 async function connectToConfiguredServer() {
   if (runtimeConfig.mode === "local") {
-    projectRoot = findProjectRoot();
+    try {
+      projectRoot = findProjectRoot();
+    } catch (error) {
+      projectRoot = "";
+      updateTrayMenu();
+      const detail = error instanceof Error ? error.message : String(error);
+      logDesktopEvent("project-root-missing", { detail });
+      await showProjectSetupPage(detail);
+      return;
+    }
     updateTrayMenu();
     await runStackOperation(startStack);
     return;
@@ -890,6 +925,42 @@ function registerDesktopFilePicker() {
       updateTrayMenu();
     }
     await runStackOperation(restartStack);
+    return true;
+  });
+
+  ipcMain.handle("admin-docs:choose-project-root", async (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+
+    const options: OpenDialogOptions = {
+      title: "选择企业行政资料管理系统项目目录",
+      defaultPath: projectRoot || undefined,
+      properties: ["openDirectory"],
+    };
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) {
+      return null;
+    }
+
+    projectRoot = saveProjectRoot(result.filePaths[0]);
+    updateTrayMenu();
+    await showStatus("starting", "项目目录已保存，正在启动本地服务...");
+    try {
+      await runStackOperation(startStack);
+    } catch (error) {
+      await showError(error);
+      throw error;
+    }
+    return projectRoot;
+  });
+
+  ipcMain.handle("admin-docs:quit", (event) => {
+    if (!isTrustedRenderer(event)) {
+      throw new Error("非法的桌面应用调用来源。");
+    }
+    isQuitting = true;
+    app.quit();
     return true;
   });
 }
@@ -1339,6 +1410,11 @@ function createTray() {
   tray.on("click", () => void openSystem());
 }
 
+function quitApp() {
+  isQuitting = true;
+  app.quit();
+}
+
 function updateTrayMenu() {
   if (!tray) {
     return;
@@ -1376,10 +1452,7 @@ function updateTrayMenu() {
       { type: "separator" },
       {
         label: "退出桌面应用",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
+        click: quitApp,
       },
     ]),
   );
@@ -1410,11 +1483,77 @@ function resolveIconPath() {
   return candidates.find((candidate) => existsSync(candidate)) ?? "";
 }
 
+async function showProjectSetupPage(detail = "") {
+  if (!mainWindow) {
+    return;
+  }
+
+  const html = `
+    <!doctype html>
+    <html lang="zh-CN">
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f7fb; color: #111827; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+          main { width: min(620px, calc(100vw - 48px)); padding: 30px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 16px 40px rgb(15 23 42 / 8%); }
+          h1 { margin: 0 0 10px; font-size: 22px; }
+          p { margin: 0 0 16px; color: #4b5563; line-height: 1.7; }
+          .notice { padding: 12px 14px; border-left: 3px solid #d97706; background: #fffbeb; color: #92400e; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+          .hint { margin-top: 16px; color: #6b7280; font-size: 13px; }
+          .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+          button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
+          button:disabled { cursor: wait; opacity: .6; }
+          .primary { background: #1d4ed8; color: #fff; }
+          .secondary { border: 1px solid #d1d5db; background: #fff; color: #374151; }
+          #feedback { min-height: 22px; margin-top: 12px; color: #b91c1c; font-size: 13px; white-space: pre-wrap; }
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>${APP_NAME}</h1>
+          <p>首次使用需要指定本机项目目录。桌面端会从该目录启动 Docker 服务，并继续使用其中的数据库和文件存储。</p>
+          <div class="notice">${escapeHtml(detail || "尚未配置本机项目目录。")}</div>
+          <p class="hint">请选择同时包含 <strong>docker-compose.prod.yml</strong> 和 <strong>.env.production</strong> 的项目目录。</p>
+          <div id="feedback" role="alert"></div>
+          <div class="actions">
+            <button id="choose" class="primary" type="button">选择项目目录并启动</button>
+            <button id="settings" class="secondary" type="button">连接设置</button>
+            <button id="quit" class="secondary" type="button">退出应用</button>
+          </div>
+        </main>
+        <script>
+          const feedback = document.getElementById('feedback');
+          const choose = document.getElementById('choose');
+          choose.addEventListener('click', async () => {
+            choose.disabled = true;
+            document.getElementById('settings').disabled = true;
+            if (feedback) feedback.textContent = '请选择项目目录...';
+            try {
+              await window.adminDocsDesktop?.chooseProjectRoot();
+            } catch (error) {
+              choose.disabled = false;
+              document.getElementById('settings').disabled = false;
+              if (feedback) feedback.textContent = error instanceof Error ? error.message : String(error);
+            }
+          });
+          document.getElementById('settings').addEventListener('click', () => window.adminDocsDesktop?.openRuntimeSettings());
+          document.getElementById('quit').addEventListener('click', () => window.adminDocsDesktop?.quit());
+        </script>
+      </body>
+    </html>
+  `;
+  await mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 async function showRuntimeSettingsPage() {
   if (!mainWindow) {
     return;
   }
   const current = runtimeConfig;
+  const configuredProjectRoot = projectRoot || readConfiguredProjectRoots()[0] || "";
   const html = `
     <!doctype html>
     <html lang="zh-CN">
@@ -1428,6 +1567,8 @@ async function showRuntimeSettingsPage() {
           p { margin: 0 0 22px; color: #4b5563; line-height: 1.6; }
           label { display: block; margin: 14px 0 7px; color: #374151; font-size: 13px; font-weight: 600; }
           select, input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; color: #111827; font: inherit; }
+          .project-root { padding: 10px 11px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; color: #4b5563; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+          #choose-project-root { margin-top: 10px; border: 1px solid #d1d5db; background: #fff; color: #374151; }
           .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
           button { height: 38px; padding: 0 16px; border: 0; border-radius: 6px; cursor: pointer; font: inherit; }
           #save { background: #1d4ed8; color: #fff; }
@@ -1449,6 +1590,12 @@ async function showRuntimeSettingsPage() {
             <label for="serverUrl">服务器地址</label>
             <input id="serverUrl" type="url" placeholder="https://your-server.example.com" value="${escapeHtml(current.mode === "server" ? current.serverUrl : "")}" />
             <p class="hint">服务器模式要求使用 HTTPS；本机调试地址可使用 http://localhost。</p>
+            ${current.mode === "local" ? `
+              <label>本机项目目录</label>
+              <div class="project-root">${escapeHtml(configuredProjectRoot || "尚未配置")}</div>
+              <button id="choose-project-root" type="button">选择项目目录并启动</button>
+              <p class="hint">请选择包含 docker-compose.prod.yml 和 .env.production 的目录；原有数据库与文件会继续使用该目录中的数据。</p>
+            ` : ""}
             <div id="message" role="alert"></div>
             <div class="actions"><button id="back" type="button">返回</button><button id="save" type="submit">保存并连接</button></div>
           </form>
@@ -1460,6 +1607,17 @@ async function showRuntimeSettingsPage() {
           const sync = () => { serverUrl.disabled = mode.value !== 'server'; };
           mode.addEventListener('change', sync);
           sync();
+          document.getElementById('choose-project-root')?.addEventListener('click', async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            message.textContent = '请选择项目目录...';
+            try {
+              await window.adminDocsDesktop?.chooseProjectRoot();
+            } catch (error) {
+              button.disabled = false;
+              message.textContent = error instanceof Error ? error.message : String(error);
+            }
+          });
           document.getElementById('back').addEventListener('click', () => window.adminDocsDesktop?.openSystem());
           document.getElementById('form').addEventListener('submit', async (event) => {
             event.preventDefault();
