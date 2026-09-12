@@ -4,14 +4,14 @@ import mammoth = require("mammoth");
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import unzipper = require("unzipper");
 
 import { CONTENT_INDEX_STATUS, ExtractedDocumentContent } from "./document-content.types";
 
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".log", ".csv", ".tsv", ".json", ".xml"]);
 const WORD_EXTENSIONS = new Set([".docx", ".docm", ".dotx", ".dotm"]);
-const SHEET_EXTENSIONS = new Set([".xls", ".xlsx", ".xlsm", ".xlsb", ".xlt", ".xltx", ".xltm"]);
+const SHEET_EXTENSIONS = new Set([".xlsx", ".xlsm", ".xltx", ".xltm"]);
 const PRESENTATION_EXTENSIONS = new Set([".pptx", ".pptm", ".ppsx", ".ppsm", ".potx", ".potm"]);
 const nodeRequire = createRequire(__filename);
 
@@ -119,12 +119,18 @@ export class DocumentContentParserService {
   }
 
   private async extractSpreadsheet(filePath: string) {
-    const workbook = XLSX.read(await readFile(filePath), { type: "buffer", cellDates: true });
-    const sheets = workbook.SheetNames.map((name) => {
-      const sheet = workbook.Sheets[name];
-      return `${name}\n${XLSX.utils.sheet_to_csv(sheet)}`;
+    const workbook = new ExcelJS.Workbook();
+    const data = await readFile(filePath);
+    await workbook.xlsx.load(data as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+    const sheets = workbook.worksheets.map((worksheet) => {
+      const rows: string[] = [];
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        const values = (row.values as unknown[]).slice(1).map(formatSpreadsheetValue);
+        rows.push(values.join(","));
+      });
+      return `${worksheet.name}\n${rows.join("\n")}`;
     });
-    return this.ready("xlsx", sheets.join("\n\n"));
+    return this.ready("exceljs", sheets.join("\n\n"));
   }
 
   private async extractPresentation(filePath: string) {
@@ -156,6 +162,31 @@ function decodeText(buffer: Buffer) {
     return buffer.toString("utf16le");
   }
   return buffer.toString("utf8");
+}
+
+function formatSpreadsheetValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if ("result" in record) {
+      return formatSpreadsheetValue(record.result);
+    }
+    if (typeof record.text === "string") {
+      return record.text;
+    }
+    if (Array.isArray(record.richText)) {
+      return record.richText
+        .map((part) => (part && typeof part === "object" && "text" in part ? String(part.text ?? "") : ""))
+        .join("");
+    }
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function normalizeText(value: string) {

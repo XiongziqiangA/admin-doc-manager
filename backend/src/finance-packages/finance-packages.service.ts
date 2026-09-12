@@ -520,7 +520,7 @@ export class FinancePackagesService {
       zipEntries.push({
         name: manifestPath,
         date: new Date(),
-        source: { type: "buffer", buffer: buildFinancePackageManifestXlsx(manifestRows) },
+        source: { type: "buffer", buffer: await buildFinancePackageManifestXlsx(manifestRows) },
       });
     }
 

@@ -1,11 +1,11 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 
 import { buildFinancePackageManifestXlsx } from "./finance-package-manifest";
 
 describe("finance package manifest", () => {
-  it("creates a readable Excel manifest with Chinese paths and version data", () => {
-    const buffer = buildFinancePackageManifestXlsx([
+  it("creates a readable Excel manifest with Chinese paths and version data", async () => {
+    const buffer = await buildFinancePackageManifestXlsx([
       {
         documentNo: "CW-2026-001",
         title: "临平酒店住宿",
@@ -20,9 +20,11 @@ describe("finance package manifest", () => {
       },
     ]);
 
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    const sheet = workbook.Sheets["文件清单"];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+    const sheet = workbook.getWorksheet("文件清单");
+    const rows: unknown[][] = [];
+    sheet?.eachRow((row) => rows.push((row.values as unknown[]).slice(1)));
 
     expect(rows[0]).toEqual([
       "文件编号",

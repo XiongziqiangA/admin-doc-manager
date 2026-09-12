@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 export interface FinancePackageManifestRow {
   documentNo: string;
@@ -13,47 +13,32 @@ export interface FinancePackageManifestRow {
   status: string;
 }
 
-export function buildFinancePackageManifestXlsx(rows: FinancePackageManifestRow[]) {
-  const values = rows.map((row) => ({
-    文件编号: row.documentNo,
-    文件名称: row.title,
-    原始文件名: row.originalFileName,
-    导出文件名: row.exportFileName,
-    交付包路径: row.outputPath,
-    材料类型: row.materialType,
-    版本: row.versionLabel,
-    "文件大小（字节）": row.fileSize,
-    "SHA-256": row.checksum,
-    状态: row.status,
-  }));
-  const sheet = XLSX.utils.json_to_sheet(values, {
-    header: [
-      "文件编号",
-      "文件名称",
-      "原始文件名",
-      "导出文件名",
-      "交付包路径",
-      "材料类型",
-      "版本",
-      "文件大小（字节）",
-      "SHA-256",
-      "状态",
-    ],
-  });
-  sheet["!cols"] = [
-    { wch: 18 },
-    { wch: 28 },
-    { wch: 36 },
-    { wch: 36 },
-    { wch: 64 },
-    { wch: 12 },
-    { wch: 22 },
-    { wch: 16 },
-    { wch: 66 },
-    { wch: 12 },
+export async function buildFinancePackageManifestXlsx(rows: FinancePackageManifestRow[]) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("文件清单");
+  sheet.columns = [
+    { header: "文件编号", key: "documentNo", width: 18 },
+    { header: "文件名称", key: "title", width: 28 },
+    { header: "原始文件名", key: "originalFileName", width: 36 },
+    { header: "导出文件名", key: "exportFileName", width: 36 },
+    { header: "交付包路径", key: "outputPath", width: 64 },
+    { header: "材料类型", key: "materialType", width: 12 },
+    { header: "版本", key: "versionLabel", width: 22 },
+    { header: "文件大小（字节）", key: "fileSize", width: 16 },
+    { header: "SHA-256", key: "checksum", width: 66 },
+    { header: "状态", key: "status", width: 12 },
   ];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "文件清单");
-  const output = XLSX.write(workbook, { type: "buffer", bookType: "xlsx", compression: true });
-  return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  sheet.addRows(rows.map((row) => ({
+    documentNo: row.documentNo,
+    title: row.title,
+    originalFileName: row.originalFileName,
+    exportFileName: row.exportFileName,
+    outputPath: row.outputPath,
+    materialType: row.materialType,
+    versionLabel: row.versionLabel,
+    fileSize: row.fileSize,
+    checksum: row.checksum,
+    status: row.status,
+  })));
+  return Buffer.from(await workbook.xlsx.writeBuffer());
 }

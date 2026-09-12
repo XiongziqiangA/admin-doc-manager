@@ -64,8 +64,18 @@ if (-not $adminPassword -or $adminPassword.Length -lt 12) {
 if (-not $adminUsername -or $adminUsername -eq "admin") {
   throw "Set ADMIN_USERNAME to a non-default administrator account."
 }
-if ($origins -match "http://(?!(localhost|127\\.0\\.1)(:|,|$))") {
-  throw "Non-local ALLOWED_ORIGINS must use HTTPS."
+foreach ($origin in ($origins -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+  try {
+    $originUri = [System.Uri]::new($origin)
+  } catch {
+    throw "ALLOWED_ORIGINS contains an invalid origin: $origin"
+  }
+  if ($originUri.Scheme -notin @("http", "https") -or $originUri.AbsolutePath -notin @("", "/") -or $originUri.Query -or $originUri.Fragment) {
+    throw "ALLOWED_ORIGINS must contain scheme, host and optional port only: $origin"
+  }
+  if ($originUri.Scheme -eq "http" -and $originUri.Host -notin @("localhost", "127.0.0.1", "::1")) {
+    throw "Non-local ALLOWED_ORIGINS must use HTTPS."
+  }
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $root "data\postgres") | Out-Null

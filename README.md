@@ -156,7 +156,7 @@
 .\scripts\start-prod.ps1
 ```
 
-也可以双击项目根目录的 `start-admin-docs.bat`。
+也可以双击项目根目录的 `start-admin-docs(启动系统）.bat`。
 
 检查服务：
 
@@ -263,7 +263,7 @@ pnpm dev:desktop
 - `DATABASE_URL`：后端连接 PostgreSQL 的地址。
 - `JWT_SECRET`：JWT 签名密钥，应使用至少 32 位随机字符串。
 - `ADMIN_USERNAME`、`ADMIN_PASSWORD`：初始管理员配置。
-- `ALLOWED_ORIGINS`：允许访问的前端来源，局域网使用时增加服务器地址。
+- `ALLOWED_ORIGINS`：允许访问的前端来源；本机可使用 HTTP，局域网或公网生产访问必须使用 HTTPS 来源。
 - `MAX_UPLOAD_SIZE`：上传大小限制，当前可按部署需要配置。
 - `AI_SEARCH_ENABLED`：默认 `false`；当前系统可使用本地正文索引，语义检索需单独配置 API Key。
 - `FINANCE_AI_ENABLED`：默认 `false`；启用财务智能识别时还需配置 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`。完整配置和隐私边界见 `docs/财务智能识别与中转站配置.md`。
@@ -273,13 +273,15 @@ pnpm dev:desktop
 
 ## 局域网使用
 
-在部署电脑的 `.env.production` 中加入部署电脑地址，例如：
+正式多人使用时，应在部署电脑前增加 HTTPS 反向代理（例如 IIS、Caddy 或 Nginx），由代理提供证书并转发到 Compose 暴露的前端端口。生产启动脚本会拒绝非本机的 HTTP 来源，因此不能直接把 `http://192.168.x.x:8080` 作为多人生产入口。
+
+例如代理对外提供 `https://admin.example.internal`，在 `.env.production` 中配置：
 
 ```text
-ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://192.168.1.50:8080
+ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,https://admin.example.internal
 ```
 
-然后重启服务，其他电脑访问 `http://192.168.1.50:8080`。还需要在 Windows 防火墙中允许 8080 端口。正式多人使用前，建议继续增加员工账号、权限、HTTPS、操作审计和自动备份策略。
+然后重启服务并在 Windows 防火墙中只放行代理使用的 HTTPS 端口。其他电脑访问 `https://admin.example.internal`。如果尚未配置 HTTPS，只建议在部署电脑本机使用，不要把生产端口直接暴露给局域网。
 
 ## 相关文档
 

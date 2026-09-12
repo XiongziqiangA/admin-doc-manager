@@ -22,9 +22,9 @@ This guide is for local private deployment of the enterprise administrative docu
 | `scripts/start-prod.ps1` | One-command production startup helper. |
 | `scripts/backup-prod.ps1` | Creates a database dump and uploaded-file archive. |
 | `scripts/restore-prod.ps1` | Restores a backup after explicit confirmation. |
-| `start-admin-docs.bat` | Daily double-click startup script. |
-| `rebuild-admin-docs.bat` | Rebuild images and start after code changes. |
-| `stop-admin-docs.bat` | Stop the production stack without deleting data. |
+| `start-admin-docs(启动系统）.bat` | Daily double-click startup script. |
+| `rebuild-admin-docs（代码修改后重新构建并启动）.bat` | Rebuild images and start after code changes. |
+| `stop-admin-docs（停止系统）.bat` | Stop the production stack without deleting data. |
 
 ## First-Time Setup
 
@@ -55,7 +55,7 @@ http://localhost:8080/api/health
 Double-click:
 
 ```text
-start-admin-docs.bat
+start-admin-docs(启动系统）.bat
 ```
 
 Or run:
@@ -106,13 +106,13 @@ For single-machine use, keep:
 ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
 ```
 
-For LAN access, add the server address:
+For formal LAN access, put an HTTPS reverse proxy in front of the frontend and add the exact HTTPS origin:
 
 ```text
-ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://192.168.1.10:8080
+ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,https://admin.example.internal
 ```
 
-Then restart:
+The production startup helper rejects non-local HTTP origins. Until HTTPS is configured, keep the service local to the deployment computer instead of exposing `http://192.168.x.x:8080` to other users. After the proxy and firewall are configured, restart:
 
 ```powershell
 .\scripts\start-prod.ps1
